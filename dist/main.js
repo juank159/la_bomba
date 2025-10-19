@@ -19,10 +19,10 @@ async function bootstrap() {
         origin: true,
         credentials: true,
     });
-    const port = configService.get('port') || 3000;
+    const port = configService.get("PORT") || 3000;
     await app.listen(port);
     console.log(`Application is running on: http://localhost:${port}`);
-    console.log(`Environment: ${configService.get('environment')}`);
+    console.log(`Environment: ${configService.get("environment")}`);
 }
 bootstrap();
 //# sourceMappingURL=main.js.map
