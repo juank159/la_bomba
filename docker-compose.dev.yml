@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Base de datos PostgreSQL
+  db:
+    image: postgres:15.3
+    container_name: pedidos_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - pedidos-dev-network
+
+  # PgAdmin para administrar la base de datos
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pedidos_pgadmin_dev
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - pedidos-dev-network
+
+  # Aplicación NestJS en modo desarrollo
+  app:
+    image: node:20-alpine
+    container_name: pedidos_app_dev
+    working_dir: /app
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: ${DB_PORT}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      NODE_ENV: development
+      PORT: ${PORT}
+    ports:
+      - "${PORT}:${PORT}"
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npm ci && npm run start:dev"
+    networks:
+      - pedidos-dev-network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+
+networks:
+  pedidos-dev-network:
+    driver: bridge

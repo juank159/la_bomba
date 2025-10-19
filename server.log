@@ -1,0 +1,47 @@
+
+> backend@1.0.0 start
+> node dist/main
+
+[dotenv@17.2.1] injecting env (0) from .env -- tip: ⚙️  override existing env vars with { override: true }
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:50 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:50 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +8ms[39m
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:50 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:50 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPassportModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:50 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:50 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:50 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19586  - [39m08/06/2025, 3:47:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mJwtModule dependencies initialized[39m[38;5;3m +36ms[39m
+[31m[Nest] 19586  - [39m08/06/2025, 3:47:51 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (1)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:47:54 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (2)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:47:57 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (3)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:48:00 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (4)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:48:03 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (5)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:48:06 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (6)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:48:09 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (7)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:48:12 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (8)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:48:15 PM [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (9)...[39m
+Error: getaddrinfo ENOTFOUND db
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)
+[31m[Nest] 19586  - [39m08/06/2025, 3:48:15 PM [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39mError: getaddrinfo ENOTFOUND db
+[90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:118:26)[39m {
+  errno: [33m-3008[39m,
+  code: [32m'ENOTFOUND'[39m,
+  syscall: [32m'getaddrinfo'[39m,
+  hostname: [32m'db'[39m
+}

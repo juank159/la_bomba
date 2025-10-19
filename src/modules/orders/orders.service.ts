@@ -1,0 +1,211 @@
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Order, OrderStatus } from './entities/order.entity';
+import { OrderItem } from './entities/order-item.entity';
+import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
+import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
+import { UserRole } from '../users/entities/user.entity';
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    @InjectRepository(Order)
+    private ordersRepository: Repository<Order>,
+    @InjectRepository(OrderItem)
+    private orderItemsRepository: Repository<OrderItem>,
+  ) {}
+
+  async create(createOrderDto: CreateOrderDto, userId: string): Promise<Order> {
+    const order = this.ordersRepository.create({
+      description: createOrderDto.description,
+      provider: createOrderDto.provider,
+      createdById: userId,
+    });
+
+    const savedOrder = await this.ordersRepository.save(order);
+
+    const orderItems = createOrderDto.items.map(item => 
+      this.orderItemsRepository.create({
+        orderId: savedOrder.id,
+        productId: item.productId,
+        existingQuantity: item.existingQuantity,
+        requestedQuantity: item.requestedQuantity,
+        measurementUnit: item.measurementUnit,
+      })
+    );
+
+    await this.orderItemsRepository.save(orderItems);
+
+    return this.findOne(savedOrder.id);
+  }
+
+  async findAll(): Promise<Order[]> {
+    return this.ordersRepository.find({
+      relations: ['createdBy', 'items', 'items.product'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findOne(id: string): Promise<Order> {
+    const order = await this.ordersRepository.findOne({
+      where: { id },
+      relations: ['createdBy', 'items', 'items.product'],
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order with ID ${id} not found`);
+    }
+
+    return order;
+  }
+
+  async update(id: string, updateOrderDto: UpdateOrderDto, userRole: UserRole, userId?: string): Promise<Order> {
+    const order = await this.findOne(id);
+
+    // Role-based access control for order editing
+    if (userRole === UserRole.EMPLOYEE) {
+      // Employees can only edit their own orders
+      if (order.createdById !== userId) {
+        throw new ForbiddenException('Employees can only edit their own orders');
+      }
+    }
+
+    if (updateOrderDto.status && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only admins can change order status');
+    }
+
+    Object.assign(order, updateOrderDto);
+    await this.ordersRepository.save(order);
+
+    if (updateOrderDto.items) {
+      await this.orderItemsRepository.delete({ orderId: id });
+      
+      const orderItems = updateOrderDto.items.map(item => 
+        this.orderItemsRepository.create({
+          orderId: id,
+          productId: item.productId,
+          existingQuantity: item.existingQuantity,
+          requestedQuantity: item.requestedQuantity,
+          measurementUnit: item.measurementUnit,
+        })
+      );
+
+      await this.orderItemsRepository.save(orderItems);
+    }
+
+    return this.findOne(id);
+  }
+
+  async updateRequestedQuantities(updateItemsDto: UpdateOrderItemsDto[], userRole: UserRole): Promise<void> {
+    if (userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only admins can update requested quantities');
+    }
+
+    for (const item of updateItemsDto) {
+      await this.orderItemsRepository.update(
+        item.itemId,
+        { requestedQuantity: item.requestedQuantity }
+      );
+    }
+  }
+
+  async addProductToOrder(
+    orderId: string,
+    addProductDto: { productId: string; existingQuantity: number; requestedQuantity?: number; measurementUnit: string },
+    userRole: UserRole,
+    userId?: string
+  ): Promise<Order> {
+    const order = await this.findOne(orderId);
+
+    // Check permissions
+    if (userRole === UserRole.EMPLOYEE && order.createdById !== userId) {
+      throw new ForbiddenException('Employees can only modify their own orders');
+    }
+
+    // Check if product already exists in order
+    const existingItem = order.items.find(item => item.productId === addProductDto.productId);
+    if (existingItem) {
+      throw new ForbiddenException('Product already exists in order. Use update quantity instead.');
+    }
+
+    // Create new order item
+    const orderItem = this.orderItemsRepository.create({
+      orderId,
+      productId: addProductDto.productId,
+      existingQuantity: addProductDto.existingQuantity,
+      requestedQuantity: addProductDto.requestedQuantity,
+      measurementUnit: addProductDto.measurementUnit as any,
+    });
+
+    await this.orderItemsRepository.save(orderItem);
+    return this.findOne(orderId);
+  }
+
+  async removeProductFromOrder(
+    orderId: string,
+    itemId: string,
+    userRole: UserRole,
+    userId?: string
+  ): Promise<Order> {
+    const order = await this.findOne(orderId);
+
+    // Check permissions
+    if (userRole === UserRole.EMPLOYEE && order.createdById !== userId) {
+      throw new ForbiddenException('Employees can only modify their own orders');
+    }
+
+    // Check if item exists in order
+    const orderItem = await this.orderItemsRepository.findOne({
+      where: { id: itemId, orderId }
+    });
+
+    if (!orderItem) {
+      throw new NotFoundException('Order item not found');
+    }
+
+    await this.orderItemsRepository.remove(orderItem);
+    return this.findOne(orderId);
+  }
+
+  async updateOrderItemQuantity(
+    orderId: string,
+    itemId: string,
+    updateDto: { existingQuantity?: number; requestedQuantity?: number },
+    userRole: UserRole,
+    userId?: string
+  ): Promise<Order> {
+    const order = await this.findOne(orderId);
+
+    // Check permissions
+    if (userRole === UserRole.EMPLOYEE && order.createdById !== userId) {
+      throw new ForbiddenException('Employees can only modify their own orders');
+    }
+
+    // Find the order item
+    const orderItem = await this.orderItemsRepository.findOne({
+      where: { id: itemId, orderId }
+    });
+
+    if (!orderItem) {
+      throw new NotFoundException('Order item not found');
+    }
+
+    // Update the quantities
+    if (updateDto.existingQuantity !== undefined) {
+      orderItem.existingQuantity = updateDto.existingQuantity;
+    }
+    if (updateDto.requestedQuantity !== undefined) {
+      orderItem.requestedQuantity = updateDto.requestedQuantity;
+    }
+
+    await this.orderItemsRepository.save(orderItem);
+    return this.findOne(orderId);
+  }
+
+  async remove(id: string): Promise<void> {
+    const order = await this.findOne(id);
+    await this.ordersRepository.remove(order);
+  }
+}
