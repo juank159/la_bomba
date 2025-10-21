@@ -3,12 +3,12 @@
 .env.local
 .env.production
 node_modules
+dist
 npm-debug.log
 .git
 .gitignore
 README.md
 .vscode
 .idea
-dist
 *.md
 .DS_Store
