@@ -61,22 +61,27 @@ export class ProductsService {
 
   async update(id: string, updateProductDto: UpdateProductDto, updatedById?: string): Promise<Product> {
     console.log('🔄 ProductsService.update called with:', { id, updateProductDto, updatedById });
-    
+    console.log('🔍 BACKEND: Received updateProductDto keys:', Object.keys(updateProductDto));
+    console.log('🔍 BACKEND: Received updateProductDto values:', Object.values(updateProductDto));
+    console.log('🔍 BACKEND: IVA in updateProductDto?', 'iva' in updateProductDto);
+    console.log('🔍 BACKEND: IVA value:', updateProductDto.iva);
+
     // For updates, we should allow updating both active and inactive products
     console.log('🔍 Searching for product with ID:', id);
     const product = await this.productsRepository.findOne({
       where: { id }
     });
-    
+
     console.log('🔍 Found product:', product ? 'YES' : 'NO');
     if (product) {
-      console.log('📊 Product details:', { 
-        id: product.id, 
+      console.log('📊 Product details:', {
+        id: product.id,
         description: product.description,
-        isActive: product.isActive 
+        isActive: product.isActive,
+        currentIva: product.iva
       });
     }
-    
+
     if (!product) {
       console.log('❌ Product not found with ID:', id);
       throw new NotFoundException(`Product with ID ${id} not found`);
@@ -91,13 +96,27 @@ export class ProductsService {
       iva: product.iva,
       description: product.description,
     };
-    
+
     console.log('✏️ Updating product with data:', updateProductDto);
-    Object.assign(product, updateProductDto);
-    
-    console.log('💾 Saving updated product...');
-    const savedProduct = await this.productsRepository.save(product);
-    console.log('✅ Product saved successfully:', savedProduct.id);
+    console.log('🔍 BEFORE update - product.iva:', product.iva);
+
+    // CRITICAL FIX: Use TypeORM's update() method instead of save() to only update specified fields
+    // This prevents any default values from being applied to fields that are not being updated
+    await this.productsRepository.update(id, updateProductDto);
+
+    console.log('💾 Product updated successfully');
+
+    // Reload the product to get the updated values
+    const savedProduct = await this.productsRepository.findOne({
+      where: { id }
+    });
+
+    if (!savedProduct) {
+      throw new NotFoundException(`Product with ID ${id} not found after update`);
+    }
+
+    console.log('✅ Product reloaded successfully:', savedProduct.id);
+    console.log('✅ Saved product IVA:', savedProduct.iva);
 
     // Create task for supervisors if there are price or info changes and we have an updatedById
     if (updatedById) {
@@ -108,7 +127,7 @@ export class ProductsService {
         // Don't fail the product update if task creation fails
       }
     }
-    
+
     return savedProduct;
   }
 
@@ -120,37 +139,60 @@ export class ProductsService {
     updatedById: string,
   ): Promise<void> {
     const priceFields = ['precioA', 'precioB', 'precioC', 'costo'];
-    const infoFields = ['description', 'iva'];
-    
+
     let hasChanges = false;
     let changeType = ChangeType.INFO;
     let description = '';
+    const changeDetails: string[] = [];
 
     // Check for price changes
-    const priceChanges = priceFields.filter(field => 
+    const priceChanges = priceFields.filter(field =>
       updateData[field] !== undefined && updateData[field] !== oldValues[field]
     );
 
-    // Check for info changes
-    const infoChanges = infoFields.filter(field => 
-      updateData[field] !== undefined && updateData[field] !== oldValues[field]
-    );
+    // Check for description change
+    const descriptionChanged = updateData['description'] !== undefined &&
+                               updateData['description'] !== oldValues['description'];
 
+    // Check for IVA change
+    const ivaChanged = updateData['iva'] !== undefined &&
+                       updateData['iva'] !== oldValues['iva'];
+
+    // Build detailed change description
     if (priceChanges.length > 0) {
       hasChanges = true;
       changeType = ChangeType.PRICE;
-      description = `Precio actualizado: ${priceChanges.join(', ')}`;
-    } else if (infoChanges.length > 0) {
+      changeDetails.push(`Precios: ${priceChanges.join(', ')}`);
+    }
+
+    if (descriptionChanged) {
       hasChanges = true;
-      changeType = ChangeType.INFO;
-      description = `Información actualizada: ${infoChanges.join(', ')}`;
+      if (changeType !== ChangeType.PRICE) {
+        changeType = ChangeType.INFO;
+      }
+      changeDetails.push(`Nombre del producto`);
+    }
+
+    if (ivaChanged) {
+      hasChanges = true;
+      if (changeType !== ChangeType.PRICE) {
+        changeType = ChangeType.INFO;
+      }
+      changeDetails.push(`IVA (${oldValues['iva']}% → ${updateData['iva']}%)`);
     }
 
     if (hasChanges) {
+      description = changeDetails.join(', ');
+
       console.log('📝 Creating update task for product:', {
         productId: product.id,
         changeType,
         description,
+        changes: {
+          prices: priceChanges,
+          descriptionChanged,
+          ivaChanged,
+        }
       });
 
       await this.tasksService.createTaskForProductUpdate(

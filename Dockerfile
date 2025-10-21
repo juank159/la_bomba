@@ -10,21 +10,25 @@ WORKDIR /app
 # Copiar archivos de configuración de dependencias
 COPY package*.json ./
 
-# Instalar dependencias
-RUN npm ci --only=production && npm cache clean --force
+# Instalar TODAS las dependencias (necesarias para el build)
+RUN npm ci && npm cache clean --force
 
-# Copiar el código fuente
-COPY . .
+# Copiar archivos de código fuente (sin .env gracias al .dockerignore)
+COPY tsconfig*.json ./
+COPY src ./src
 
 # Compilar la aplicación TypeScript
 RUN npm run build
 
-# Crear un usuario no-root para mayor seguridad
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nestjs -u 1001
+# Remover dependencias de desarrollo
+RUN npm prune --production
 
-# Cambiar la propiedad de los archivos al usuario nodejs
-RUN chown -R nestjs:nodejs /app
+# Crear un usuario no-root para mayor seguridad
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nestjs -u 1001 && \
+    chown -R nestjs:nodejs /app
+
+# Cambiar al usuario no-root
 USER nestjs
 
 # Exponer el puerto

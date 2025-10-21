@@ -28,8 +28,8 @@ export class Product {
   @Column('decimal', { precision: 10, scale: 2, nullable: true })
   costo: number;
 
-  // IVA - porcentaje (por defecto 19%)
-  @Column('decimal', { precision: 5, scale: 2, default: 19.00 })
+  // IVA - porcentaje (sin valor por defecto)
+  @Column('decimal', { precision: 5, scale: 2 })
   iva: number;
 
   @CreateDateColumn()

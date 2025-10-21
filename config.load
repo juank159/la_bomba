@@ -1,0 +1,19 @@
+LOAD DATABASE
+     FROM mysql://root:password@localhost:3306/pedidos_db
+     INTO postgresql://postgres:password@localhost:5432/pedidos_db
+
+ WITH include no drop,
+      create tables,
+      create indexes,
+      reset sequences,
+      data only
+
+ SET work_mem to '16MB',
+     maintenance_work_mem to '512 MB',
+     search_path to 'public'
+
+ CAST type datetime to timestamp using zero-dates-to-null,
+      type date drop default drop not null using zero-dates-to-null,
+      type decimal to numeric drop default drop not null;
+
+ALTER SCHEMA pedidos_db RENAME TO public;

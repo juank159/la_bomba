@@ -37,11 +37,11 @@ export class CreateProductDto {
   @Type(() => Number)
   costo?: number;
 
-  // IVA - porcentaje (por defecto 19%)
+  // IVA - porcentaje
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(100)
   @Type(() => Number)
-  iva?: number = 19.00;
+  iva?: number;
 }

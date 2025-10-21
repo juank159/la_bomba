@@ -55,7 +55,16 @@ export class ProductsController {
     console.log('👤 Full req.user object:', JSON.stringify(req.user, null, 2));
     console.log('🆔 req.user.userId:', req.user?.userId);
     console.log('🆔 req.user.id:', req.user?.id);
-    console.log('📊 Update data:', updateProductDto);
+
+    // Log the RAW body BEFORE DTO transformation
+    console.log('🔍 RAW BODY (req.body):', JSON.stringify(req.body, null, 2));
+    console.log('🔍 DTO after transformation:', JSON.stringify(updateProductDto, null, 2));
+    console.log('🔍 DTO constructor:', updateProductDto.constructor.name);
+    console.log('🔍 DTO keys:', Object.keys(updateProductDto));
+    console.log('🔍 DTO has own property iva?:', updateProductDto.hasOwnProperty('iva'));
+    console.log('🔍 IVA value:', updateProductDto.iva);
+    console.log('🔍 IVA is undefined?:', updateProductDto.iva === undefined);
+
     return this.productsService.update(id, updateProductDto, req.user?.userId);
   }
 
