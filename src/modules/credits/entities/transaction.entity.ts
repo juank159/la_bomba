@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, Jo
 import { Credit } from './credit.entity';
 
 export enum TransactionType {
+  CHARGE = 'charge',                 // Cargo inicial del crédito
   DEBT_INCREASE = 'debt_increase',  // Aumento de deuda
   PAYMENT = 'payment',               // Pago
 }
@@ -30,6 +31,10 @@ export class CreditTransaction {
 
   @Column({ type: 'text', nullable: true })
   description: string;
+
+  // Balance after this transaction (saldo pendiente después de esta transacción)
+  @Column({ name: 'balance_after', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  balanceAfter: number;
 
   // Traceability - who made this transaction
   @Column({ name: 'created_by', nullable: true })

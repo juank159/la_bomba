@@ -4,12 +4,18 @@ import { Repository } from 'typeorm';
 import { ProductUpdateTask, TaskStatus, ChangeType } from './entities/product-update-task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
+import { Product } from './entities/product.entity';
 
 @Injectable()
 export class ProductUpdateTasksService {
   constructor(
     @InjectRepository(ProductUpdateTask)
     private tasksRepository: Repository<ProductUpdateTask>,
+    @InjectRepository(Product)
+    private productsRepository: Repository<Product>,
+    private notificationsService: NotificationsService,
   ) {}
 
   /// Create a new update task
@@ -92,7 +98,7 @@ export class ProductUpdateTasksService {
     completedById: string,
   ): Promise<ProductUpdateTask> {
     console.log('🎯 Completing task:', { id, completedById, notes: completeTaskDto.notes });
-    
+
     const task = await this.findOne(id);
 
     if (task.status !== TaskStatus.PENDING) {
@@ -106,7 +112,52 @@ export class ProductUpdateTasksService {
 
     const updatedTask = await this.tasksRepository.save(task);
     console.log('✅ Task completed:', updatedTask.id);
-    
+
+    // Create notification for admin if there's a note
+    if (completeTaskDto.notes && completeTaskDto.notes.trim().length > 0) {
+      try {
+        // Get product details
+        const product = await this.productsRepository.findOne({
+          where: { id: task.productId },
+        });
+
+        if (product) {
+          // Build notification title and message based on change type
+          let changeTypeText = 'información';
+          switch (task.changeType) {
+            case ChangeType.PRICE:
+              changeTypeText = 'precios';
+              break;
+            case ChangeType.INFO:
+              changeTypeText = 'información';
+              break;
+            case ChangeType.ARRIVAL:
+              changeTypeText = 'llegada';
+              break;
+          }
+
+          const title = `Tarea completada: ${product.description}`;
+          const message = `El supervisor completó la tarea de ${changeTypeText} del producto "${product.description}".\n\nNota: ${completeTaskDto.notes}`;
+
+          // Get admin user (assuming there's one admin with role 'admin')
+          // In production, you might want to notify all admins
+          await this.notificationsService.createNotification(
+            task.createdById, // The admin who created the task
+            title,
+            message,
+            NotificationType.TASK_COMPLETED,
+            product.id,
+            task.id,
+          );
+
+          console.log('📬 Notification created for admin:', task.createdById);
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to create notification:', error);
+        // Don't fail the task completion if notification fails
+      }
+    }
+
     return updatedTask;
   }
 

@@ -2,6 +2,7 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { AppModule } from "./app.module";
+import { DebugInterceptor } from "./debug.interceptor";
 import "reflect-metadata";
 import * as dotenv from "dotenv";
 
@@ -13,14 +14,14 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
+  app.useGlobalInterceptors(new DebugInterceptor());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: false, // Changed to false to allow extra properties to pass through
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: false, // Disable implicit conversion to prevent default values
-      },
+      forbidNonWhitelisted: false,
+      transform: false, // ✅ DISABLE TRANSFORM to prevent unwanted field addition
+      // Removed transformOptions since transform is disabled
     })
   );
 

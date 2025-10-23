@@ -52,6 +52,17 @@ export class CreditsService {
     });
     const savedCredit = await this.creditsRepository.save(credit);
 
+    // ✅ Crear transacción inicial para registrar el crédito original en el historial
+    const initialTransaction = this.transactionsRepository.create({
+      creditId: savedCredit.id,
+      type: TransactionType.CHARGE,
+      amount: createCreditDto.totalAmount,
+      description: createCreditDto.description,
+      createdBy: username,
+      balanceAfter: createCreditDto.totalAmount, // El saldo después de esta transacción es el monto total
+    });
+    await this.transactionsRepository.save(initialTransaction);
+
     // Reload with relations to ensure client is loaded
     return this.findOne(savedCredit.id);
   }
@@ -122,14 +133,16 @@ export class CreditsService {
     }
 
     const newTotalAmount = Number(credit.totalAmount) + Number(amount);
+    const newRemainingAmount = Number(credit.remainingAmount) + Number(amount);
 
-    // Register transaction
+    // Register transaction con el saldo después de la operación
     const transaction = this.transactionsRepository.create({
       creditId: id,
       type: TransactionType.DEBT_INCREASE,
       amount: amount,
       description: description,
       createdBy: username,
+      balanceAfter: newRemainingAmount, // Saldo pendiente después de aumentar la deuda
     });
     await this.transactionsRepository.save(transaction);
 
@@ -170,13 +183,17 @@ export class CreditsService {
 
     await this.paymentsRepository.save(payment);
 
-    // Register transaction
+    // Calcular el nuevo saldo pendiente después del pago
+    const newRemainingBalance = remainingAmount - createPaymentDto.amount;
+
+    // Register transaction con el saldo después del pago
     const transaction = this.transactionsRepository.create({
       creditId: creditId,
       type: TransactionType.PAYMENT,
       amount: createPaymentDto.amount,
       description: createPaymentDto.description || 'Pago',
       createdBy: username,
+      balanceAfter: newRemainingBalance, // Saldo pendiente después del pago
     });
     await this.transactionsRepository.save(transaction);
 

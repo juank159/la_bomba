@@ -26,10 +26,11 @@ export class OrdersService {
 
     const savedOrder = await this.ordersRepository.save(order);
 
-    const orderItems = createOrderDto.items.map(item => 
+    const orderItems = createOrderDto.items.map(item =>
       this.orderItemsRepository.create({
         orderId: savedOrder.id,
         productId: item.productId,
+        temporaryProductId: item.temporaryProductId,
         existingQuantity: item.existingQuantity,
         requestedQuantity: item.requestedQuantity,
         measurementUnit: item.measurementUnit,
@@ -43,7 +44,7 @@ export class OrdersService {
 
   async findAll(): Promise<Order[]> {
     return this.ordersRepository.find({
-      relations: ['createdBy', 'items', 'items.product'],
+      relations: ['createdBy', 'items', 'items.product', 'items.temporaryProduct'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -51,7 +52,7 @@ export class OrdersService {
   async findOne(id: string): Promise<Order> {
     const order = await this.ordersRepository.findOne({
       where: { id },
-      relations: ['createdBy', 'items', 'items.product'],
+      relations: ['createdBy', 'items', 'items.product', 'items.temporaryProduct'],
     });
 
     if (!order) {
@@ -82,10 +83,11 @@ export class OrdersService {
     if (updateOrderDto.items) {
       await this.orderItemsRepository.delete({ orderId: id });
       
-      const orderItems = updateOrderDto.items.map(item => 
+      const orderItems = updateOrderDto.items.map(item =>
         this.orderItemsRepository.create({
           orderId: id,
           productId: item.productId,
+          temporaryProductId: item.temporaryProductId,
           existingQuantity: item.existingQuantity,
           requestedQuantity: item.requestedQuantity,
           measurementUnit: item.measurementUnit,
@@ -113,7 +115,7 @@ export class OrdersService {
 
   async addProductToOrder(
     orderId: string,
-    addProductDto: { productId: string; existingQuantity: number; requestedQuantity?: number; measurementUnit: string },
+    addProductDto: { productId?: string; temporaryProductId?: string; existingQuantity: number; requestedQuantity?: number; measurementUnit: string },
     userRole: UserRole,
     userId?: string
   ): Promise<Order> {
@@ -125,15 +127,26 @@ export class OrdersService {
     }
 
     // Check if product already exists in order
-    const existingItem = order.items.find(item => item.productId === addProductDto.productId);
-    if (existingItem) {
-      throw new ForbiddenException('Product already exists in order. Use update quantity instead.');
+    if (addProductDto.productId) {
+      const existingItem = order.items.find(item => item.productId === addProductDto.productId);
+      if (existingItem) {
+        throw new ForbiddenException('Product already exists in order. Use update quantity instead.');
+      }
+    }
+
+    // Check if temporary product already exists in order
+    if (addProductDto.temporaryProductId) {
+      const existingItem = order.items.find(item => item.temporaryProductId === addProductDto.temporaryProductId);
+      if (existingItem) {
+        throw new ForbiddenException('Temporary product already exists in order. Use update quantity instead.');
+      }
     }
 
     // Create new order item
     const orderItem = this.orderItemsRepository.create({
       orderId,
       productId: addProductDto.productId,
+      temporaryProductId: addProductDto.temporaryProductId,
       existingQuantity: addProductDto.existingQuantity,
       requestedQuantity: addProductDto.requestedQuantity,
       measurementUnit: addProductDto.measurementUnit as any,

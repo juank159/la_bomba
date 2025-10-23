@@ -3,9 +3,13 @@ import { Type } from 'class-transformer';
 import { MeasurementUnit } from '../entities/order-item.entity';
 
 export class CreateOrderItemDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  productId: string;
+  productId?: string;
+
+  @IsOptional()
+  @IsString()
+  temporaryProductId?: string;
 
   @IsNumber()
   @IsNotEmpty()
