@@ -1,0 +1,89 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                   VARIABLES DE ENTORNO PARA RENDER                       ║
+║          Copia estas variables en tu servicio de Render                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 1. APPLICATION CONFIGURATION                                             │
+└──────────────────────────────────────────────────────────────────────────┘
+
+Key: NODE_ENV
+Value: production
+
+Key: PORT
+Value: 3000
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 2. DATABASE (SUPABASE) - Opción Recomendada                             │
+└──────────────────────────────────────────────────────────────────────────┘
+
+Key: DATABASE_URL
+Value: postgresql://postgres:Bauduty0159@db.yeeziftpvdmiuljncbva.supabase.co:5432/postgres
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 3. JWT CONFIGURATION                                                     │
+└──────────────────────────────────────────────────────────────────────────┘
+
+⚠️  IMPORTANTE: Genera un nuevo JWT_SECRET antes de continuar
+    Ejecuta en tu terminal: openssl rand -base64 64
+
+Key: JWT_SECRET
+Value: [PEGA AQUÍ EL SECRET GENERADO]
+
+Key: JWT_EXPIRES_IN
+Value: 7d
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 4. CORS CONFIGURATION                                                    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+⚠️  Reemplaza con la URL real de tu frontend
+
+Key: ALLOWED_ORIGINS
+Value: https://tu-frontend.onrender.com
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                          CONFIGURACIÓN DE RENDER                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Build Command: npm install && npm run build
+Start Command: npm run start:prod
+Health Check Path: /health
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                           PASOS RÁPIDOS                                   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+1. Ve a https://dashboard.render.com
+2. Click "New +" → "Web Service"
+3. Conecta tu repositorio de GitHub
+4. Agrega las variables de arriba en "Environment"
+5. Click "Create Web Service"
+6. ¡Listo! Tu API estará en línea en ~5 minutos
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                              VERIFICAR                                    ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Después del deploy, prueba:
+
+curl https://tu-app.onrender.com/health
+
+Deberías ver:
+{
+  "status": "ok",
+  "timestamp": "2025-10-24T...",
+  "uptime": 123.45,
+  "environment": "production"
+}
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                          NOTAS IMPORTANTES                                ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+✓ Tu código ya está configurado para Supabase con SSL
+✓ Render detectará automáticamente el puerto 3000
+✓ Los deploys son automáticos cuando hagas push a GitHub
+✓ El plan gratuito se duerme después de 15 min sin uso
+✓ Tarda ~30 segundos en "despertar" después de inactividad
+

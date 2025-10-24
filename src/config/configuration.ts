@@ -1,3 +1,5 @@
+import { validate } from './env.validation';
+
 export default () => ({
   port: parseInt(process.env.PORT, 10) || 3000,
   database: {
@@ -12,16 +14,9 @@ export default () => ({
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
   environment: process.env.NODE_ENV || 'development',
+  allowedOrigins: process.env.ALLOWED_ORIGINS || 'http://localhost:3000',
 });
 
-export const validateConfig = (config: any) => {
-  const requiredEnvVars = ['JWT_SECRET'];
-  
-  for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
-      throw new Error(`Missing required environment variable: ${envVar}. Please check your .env file.`);
-    }
-  }
-  
-  return config;
+export const validateConfig = (config: Record<string, unknown>) => {
+  return validate(config);
 };
