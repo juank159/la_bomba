@@ -1,0 +1,40 @@
+[2025-10-23 18:53:17] [INFO] Iniciando importación en modo: REAL
+[2025-10-23 18:53:17] [INFO] Archivo CSV: articulos.csv
+[2025-10-23 18:53:17] [INFO] Leyendo archivo CSV: articulos.csv
+[2025-10-23 18:53:17] [ERROR] Fila 49: Descripción inválida
+[2025-10-23 18:53:17] [WARNING] Fila 101: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 350: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [ERROR] Fila 350: Descripción inválida
+[2025-10-23 18:53:17] [WARNING] Fila 352: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 353: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 364: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 511: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 538: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 2122: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 2252: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 2254: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [ERROR] Fila 2254: Descripción inválida
+[2025-10-23 18:53:17] [WARNING] Fila 2909: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 2954: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 3179: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 3187: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 3467: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 3868: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Fila 4400: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [ERROR] Fila 4476: Descripción inválida
+[2025-10-23 18:53:17] [WARNING] Fila 5136: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [ERROR] Fila 5136: Descripción inválida
+[2025-10-23 18:53:17] [WARNING] Fila 6274: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:53:17] [WARNING] Se omitieron 5 productos con errores
+[2025-10-23 18:53:17] [INFO] Productos válidos leídos: 6337
+[2025-10-23 18:53:17] [INFO] Errores encontrados: 5
+[2025-10-23 18:53:17] [INFO] Generando archivo SQL: upsert_products.sql
+[2025-10-23 18:53:17] [SUCCESS] Archivo SQL generado exitosamente: upsert_products.sql
+[2025-10-23 18:53:17] [INFO] Creando backup de la tabla products...
+[2025-10-23 18:53:18] [SUCCESS] Backup creado: backup_products_20251023_185317.sql
+[2025-10-23 18:53:18] [INFO] Ejecutando SQL en la base de datos...
+[2025-10-23 18:53:19] [SUCCESS] SQL ejecutado exitosamente!
+[2025-10-23 18:53:19] [INFO] Verificando importación...
+[2025-10-23 18:53:19] [INFO] Productos activos en BD: 6949
+[2025-10-23 18:53:19] [INFO] Productos en CSV: 6337
+[2025-10-23 18:53:19] [SUCCESS] Verificación exitosa: Todos los productos fueron procesados

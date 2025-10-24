@@ -1,0 +1,36 @@
+[2025-10-23 18:08:03] [INFO] Iniciando importación en modo: REAL
+[2025-10-23 18:08:03] [INFO] Archivo CSV: articulos_la bomba.csv
+[2025-10-23 18:08:03] [INFO] Leyendo archivo CSV: articulos_la bomba.csv
+[2025-10-23 18:08:03] [WARNING] Fila 101: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 350: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [ERROR] Fila 350: Descripción inválida
+[2025-10-23 18:08:03] [WARNING] Fila 352: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 353: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 364: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 511: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 538: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 2122: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 2252: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 2254: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [ERROR] Fila 2254: Descripción inválida
+[2025-10-23 18:08:03] [WARNING] Fila 2953: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 3178: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 3186: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 3466: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 3867: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 4399: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [WARNING] Fila 5135: PrecioA vacío, usando 1000.0 por defecto
+[2025-10-23 18:08:03] [ERROR] Fila 5135: Descripción inválida
+[2025-10-23 18:08:03] [WARNING] Se omitieron 3 productos con errores
+[2025-10-23 18:08:03] [INFO] Productos válidos leídos: 5888
+[2025-10-23 18:08:03] [INFO] Errores encontrados: 3
+[2025-10-23 18:08:03] [INFO] Generando archivo SQL: upsert_products.sql
+[2025-10-23 18:08:03] [SUCCESS] Archivo SQL generado exitosamente: upsert_products.sql
+[2025-10-23 18:08:03] [INFO] Creando backup de la tabla products...
+[2025-10-23 18:08:03] [SUCCESS] Backup creado: backup_products_20251023_180803.sql
+[2025-10-23 18:08:03] [INFO] Ejecutando SQL en la base de datos...
+[2025-10-23 18:08:04] [SUCCESS] SQL ejecutado exitosamente!
+[2025-10-23 18:08:04] [INFO] Verificando importación...
+[2025-10-23 18:08:05] [INFO] Productos activos en BD: 6433
+[2025-10-23 18:08:05] [INFO] Productos en CSV: 5888
+[2025-10-23 18:08:05] [SUCCESS] Verificación exitosa: Todos los productos fueron procesados

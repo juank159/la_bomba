@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { User } from '../../users/entities/user.entity';
 
 export enum TemporaryProductStatus {
   PENDING_ADMIN = 'pending_admin',           // Esperando que admin agregue precios/IVA
@@ -64,11 +65,19 @@ export class TemporaryProduct {
   @Column({ name: 'completed_by_admin', nullable: true })
   completedByAdmin: string;
 
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'completed_by_admin' })
+  completedByAdminUser: User;
+
   @Column({ name: 'completed_by_admin_at', nullable: true })
   completedByAdminAt: Date;
 
   @Column({ name: 'completed_by_supervisor', nullable: true })
   completedBySupervisor: string;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'completed_by_supervisor' })
+  completedBySupervisorUser: User;
 
   @Column({ name: 'completed_by_supervisor_at', nullable: true })
   completedBySupervisorAt: Date;

@@ -150,7 +150,7 @@ export class ProductsController {
   }
 
   @Post("temporary/:id/complete-supervisor")
-  @Roles(UserRole.SUPERVISOR)
+  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
   completeTemporaryProductBySupervisor(
     @Param("id") id: string,
     @Body() body: { notes?: string },

@@ -110,8 +110,14 @@ export class ProductUpdateTasksService {
     task.completedAt = new Date();
     task.notes = completeTaskDto.notes;
 
-    const updatedTask = await this.tasksRepository.save(task);
-    console.log('✅ Task completed:', updatedTask.id);
+    await this.tasksRepository.save(task);
+    console.log('✅ Task completed:', task.id);
+
+    // Reload task with all relations to return complete data
+    const updatedTask = await this.tasksRepository.findOne({
+      where: { id: task.id },
+      relations: ['product', 'createdBy', 'completedBy'],
+    });
 
     // Create notification for admin if there's a note
     if (completeTaskDto.notes && completeTaskDto.notes.trim().length > 0) {

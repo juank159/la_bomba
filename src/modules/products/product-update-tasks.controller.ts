@@ -64,13 +64,17 @@ export class ProductUpdateTasksController {
   }
 
   @Patch(':id/complete')
-  @Roles(UserRole.SUPERVISOR)
+  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
   completeTask(
     @Param('id') id: string,
     @Body() completeTaskDto: CompleteTaskDto,
     @Request() req: any,
   ) {
-    console.log('🎯 COMPLETE task endpoint called by supervisor:', { id, supervisorId: req.user?.userId });
+    console.log('🎯 COMPLETE task endpoint called:', {
+      id,
+      userId: req.user?.userId,
+      role: req.user?.role
+    });
     return this.tasksService.completeTask(id, completeTaskDto, req.user?.userId);
   }
 }

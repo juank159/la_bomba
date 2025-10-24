@@ -1,0 +1,530 @@
+#!/usr/bin/env python3
+"""
+Importador SEGURO de productos desde CSV con UPSERT
+- Mantiene los IDs existentes (no rompe relaciones)
+- Backup automático antes de ejecutar
+- Modo dry-run para probar sin modificar
+- Logging detallado de cada operación
+- Validaciones robustas
+- Transacciones con rollback
+"""
+import csv
+import subprocess
+import re
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+from collections import defaultdict
+import sys
+
+# =============== CONFIGURACIÓN ===============
+CSV_FILE = 'articulos_la bomba.csv'
+SQL_OUTPUT_FILE = 'upsert_products.sql'
+BACKUP_FILE = f'backup_products_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sql'
+LOG_FILE = f'import_log_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
+CONTAINER_NAME = 'pedidos_db'
+DB_USER = 'postgres'
+DB_NAME = 'pedidos_db'
+
+# =============== SISTEMA DE LOGGING ===============
+class Logger:
+    def __init__(self, log_file: str):
+        self.log_file = log_file
+        self.errors = []
+        self.warnings = []
+
+    def log(self, message: str, level: str = 'INFO'):
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_message = f"[{timestamp}] [{level}] {message}"
+        print(log_message)
+
+        with open(self.log_file, 'a', encoding='utf-8') as f:
+            f.write(log_message + '\n')
+
+        if level == 'ERROR':
+            self.errors.append(message)
+        elif level == 'WARNING':
+            self.warnings.append(message)
+
+    def info(self, message: str):
+        self.log(message, 'INFO')
+
+    def warning(self, message: str):
+        self.log(message, 'WARNING')
+
+    def error(self, message: str):
+        self.log(message, 'ERROR')
+
+    def success(self, message: str):
+        self.log(message, 'SUCCESS')
+
+    def get_summary(self) -> str:
+        return f"\n=== RESUMEN ===\nErrores: {len(self.errors)}\nAdvertencias: {len(self.warnings)}"
+
+logger = Logger(LOG_FILE)
+
+# =============== FUNCIONES DE PARSING ===============
+def parse_price(value: str) -> Optional[float]:
+    """Convertir precio desde string, manejando formato científico"""
+    if not value or value.strip() == '' or value == '0':
+        return None
+    try:
+        # Manejar formato científico (7,70211E+12)
+        clean_value = str(value).replace(',', '.').replace(' ', '').strip()
+        price = float(clean_value)
+
+        # Si es formato científico muy grande, es probablemente un barcode mal parseado
+        if price > 1e10:
+            logger.warning(f"Precio sospechosamente alto ignorado: {value}")
+            return None
+
+        return price if price > 0 else None
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Error parseando precio '{value}': {e}")
+        return None
+
+def parse_barcode(value: str) -> str:
+    """Convertir barcode, manejando formato científico"""
+    if not value or value.strip() == '':
+        raise ValueError("Barcode vacío")
+
+    try:
+        # Limpiar el valor
+        clean_value = str(value).strip().strip('"')
+
+        # Si contiene E+ o e+ es notación científica
+        if 'E+' in clean_value or 'e+' in clean_value:
+            # Convertir de científico a número entero
+            clean_value = clean_value.replace(',', '.')
+            number = float(clean_value)
+            # Convertir a string sin decimales
+            barcode = f"{int(number)}"
+        else:
+            # Limpiar caracteres no numéricos (excepto guiones y letras)
+            barcode = clean_value
+
+        return barcode
+    except Exception as e:
+        raise ValueError(f"Error parseando barcode '{value}': {e}")
+
+def parse_iva(value: str) -> float:
+    """Extraer porcentaje de IVA del texto"""
+    if not value or value.strip() == '':
+        return 0.00
+
+    value_str = str(value).strip().upper()
+
+    # Casos especiales
+    if 'EXCLUIDO' in value_str or 'EXENTO' in value_str:
+        return 0.00
+
+    # Buscar porcentajes conocidos
+    iva_map = {
+        '19': 19.00,
+        '16': 16.00,
+        '10': 10.00,
+        '5': 5.00,
+        '0': 0.00
+    }
+
+    for key, val in iva_map.items():
+        if key in value_str:
+            return val
+
+    # Intentar extraer número
+    try:
+        numbers = re.findall(r'\d+(?:\.\d+)?', value_str)
+        if numbers:
+            iva = float(numbers[0])
+            if iva in [0, 5, 10, 16, 19]:
+                return float(iva)
+        return 0.00
+    except (ValueError, TypeError):
+        return 0.00
+
+# =============== VALIDACIONES ===============
+def validate_product(product: Dict, row_number: int) -> Tuple[bool, Optional[str]]:
+    """Validar que un producto tenga los datos mínimos requeridos"""
+
+    # Validar barcode
+    if not product.get('barcode'):
+        return False, f"Fila {row_number}: Barcode vacío"
+
+    # Validar descripción
+    if not product.get('description') or len(product['description'].strip()) < 2:
+        return False, f"Fila {row_number}: Descripción inválida"
+
+    # Validar precioA (obligatorio)
+    if product.get('precioA') is None or product['precioA'] <= 0:
+        return False, f"Fila {row_number}: PrecioA inválido o vacío"
+
+    # Validar IVA
+    if product.get('iva') is None or product['iva'] < 0:
+        return False, f"Fila {row_number}: IVA inválido"
+
+    return True, None
+
+def check_duplicates(products: List[Dict]) -> Dict[str, List[int]]:
+    """Detectar barcodes duplicados en el CSV"""
+    barcode_map = defaultdict(list)
+
+    for idx, product in enumerate(products, start=1):
+        barcode_map[product['barcode']].append(idx)
+
+    # Filtrar solo duplicados
+    duplicates = {k: v for k, v in barcode_map.items() if len(v) > 1}
+
+    if duplicates:
+        logger.warning(f"Se encontraron {len(duplicates)} barcodes duplicados en el CSV:")
+        for barcode, rows in duplicates.items():
+            logger.warning(f"  Barcode '{barcode}' en filas: {rows}")
+
+    return duplicates
+
+# =============== LECTURA DE CSV ===============
+def read_csv_and_validate() -> Tuple[List[Dict], List[str]]:
+    """Leer CSV, validar y retornar productos válidos y errores"""
+    products = []
+    errors = []
+
+    logger.info(f"Leyendo archivo CSV: {CSV_FILE}")
+
+    try:
+        with open(CSV_FILE, 'r', encoding='utf-8-sig') as csvfile:
+            reader = csv.DictReader(csvfile, delimiter=';')
+
+            for row_num, row in enumerate(reader, start=2):  # start=2 porque la fila 1 es header
+                try:
+                    # Saltar filas vacías
+                    if not row.get('nombre') or not row.get('referencias'):
+                        logger.warning(f"Fila {row_num}: Datos incompletos, saltando")
+                        continue
+
+                    # Parsear barcode primero (puede lanzar error)
+                    barcode = parse_barcode(row.get('referencias', ''))
+
+                    product = {
+                        'description': row['nombre'].strip().strip('"'),
+                        'barcode': barcode,
+                        'precioA': parse_price(row.get('precioa')),
+                        'precioB': parse_price(row.get('preciob')),
+                        'precioC': parse_price(row.get('precioc')),
+                        'costo': parse_price(row.get('costo')),
+                        'iva': parse_iva(row.get('iva', '')),
+                        'row_number': row_num
+                    }
+
+                    # Aplicar precio mínimo por defecto si no hay precioA
+                    if product['precioA'] is None:
+                        product['precioA'] = 1000.0
+                        logger.warning(f"Fila {row_num}: PrecioA vacío, usando 1000.0 por defecto")
+
+                    # Validar producto
+                    is_valid, error = validate_product(product, row_num)
+                    if not is_valid:
+                        errors.append(error)
+                        logger.error(error)
+                        continue
+
+                    products.append(product)
+
+                except Exception as e:
+                    error_msg = f"Fila {row_num}: Error procesando - {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(error_msg)
+
+    except FileNotFoundError:
+        error_msg = f"Archivo CSV no encontrado: {CSV_FILE}"
+        errors.append(error_msg)
+        logger.error(error_msg)
+        return [], errors
+    except Exception as e:
+        error_msg = f"Error leyendo CSV: {str(e)}"
+        errors.append(error_msg)
+        logger.error(error_msg)
+        return [], errors
+
+    logger.info(f"Productos válidos leídos: {len(products)}")
+    logger.info(f"Errores encontrados: {len(errors)}")
+
+    # Detectar duplicados
+    check_duplicates(products)
+
+    return products, errors
+
+# =============== GENERACIÓN DE SQL ===============
+def create_upsert_sql(product: Dict) -> str:
+    """Crear comando SQL UPSERT (INSERT ... ON CONFLICT ... DO UPDATE)"""
+
+    # Escapar comillas simples en strings
+    description = product['description'].replace("'", "''")
+    barcode = product['barcode'].replace("'", "''")
+
+    # Preparar valores
+    precioA = product['precioA']
+    precioB = f"'{product['precioB']}'" if product['precioB'] is not None else 'NULL'
+    precioC = f"'{product['precioC']}'" if product['precioC'] is not None else 'NULL'
+    costo = f"'{product['costo']}'" if product['costo'] is not None else 'NULL'
+    iva = product['iva']
+
+    # SQL UPSERT - Si el barcode existe, actualiza. Si no existe, inserta.
+    sql = f"""
+-- Producto: {description[:50]}... (Fila {product['row_number']})
+INSERT INTO products (description, barcode, "isActive", precioa, preciob, precioc, costo, iva, "createdAt", "updatedAt")
+VALUES ('{description}', '{barcode}', true, {precioA}, {precioB}, {precioC}, {costo}, {iva}, NOW(), NOW())
+ON CONFLICT (barcode)
+DO UPDATE SET
+  description = EXCLUDED.description,
+  precioa = EXCLUDED.precioa,
+  preciob = EXCLUDED.preciob,
+  precioc = EXCLUDED.precioc,
+  costo = EXCLUDED.costo,
+  iva = EXCLUDED.iva,
+  "isActive" = true,
+  "updatedAt" = NOW();
+"""
+    return sql
+
+def generate_sql_file(products: List[Dict], output_file: str) -> bool:
+    """Generar archivo SQL con transacciones"""
+    logger.info(f"Generando archivo SQL: {output_file}")
+
+    try:
+        with open(output_file, 'w', encoding='utf-8') as sqlfile:
+            # Comenzar transacción
+            sqlfile.write("-- ================================================\n")
+            sqlfile.write("-- IMPORTACIÓN SEGURA DE PRODUCTOS CON UPSERT\n")
+            sqlfile.write(f"-- Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            sqlfile.write(f"-- Total productos: {len(products)}\n")
+            sqlfile.write("-- ================================================\n\n")
+            sqlfile.write("BEGIN;\n\n")
+
+            # Generar UPSERTS
+            for idx, product in enumerate(products, start=1):
+                sqlfile.write(create_upsert_sql(product))
+
+                # Log de progreso cada 100 productos
+                if idx % 100 == 0:
+                    sqlfile.write(f"\n-- Procesados {idx}/{len(products)} productos...\n\n")
+
+            # Commit de transacción
+            sqlfile.write("\n-- ================================================\n")
+            sqlfile.write("-- COMMIT - Aplicar todos los cambios\n")
+            sqlfile.write("-- ================================================\n")
+            sqlfile.write("COMMIT;\n")
+
+        logger.success(f"Archivo SQL generado exitosamente: {output_file}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error generando archivo SQL: {str(e)}")
+        return False
+
+# =============== OPERACIONES DE BASE DE DATOS ===============
+def create_backup() -> bool:
+    """Crear backup de la tabla products antes de importar"""
+    logger.info("Creando backup de la tabla products...")
+
+    try:
+        # Exportar solo la tabla products
+        result = subprocess.run([
+            'docker', 'exec', CONTAINER_NAME,
+            'pg_dump', '-U', DB_USER, '-d', DB_NAME,
+            '--table=products', '--data-only', '--column-inserts'
+        ], capture_output=True, text=True, check=True)
+
+        # Guardar backup
+        with open(BACKUP_FILE, 'w', encoding='utf-8') as f:
+            f.write(result.stdout)
+
+        logger.success(f"Backup creado: {BACKUP_FILE}")
+        return True
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error creando backup: {e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Error inesperado creando backup: {str(e)}")
+        return False
+
+def execute_sql(sql_file: str, dry_run: bool = False) -> Tuple[bool, str]:
+    """Ejecutar archivo SQL en el contenedor"""
+
+    if dry_run:
+        logger.info("=== MODO DRY-RUN: No se ejecutarán cambios reales ===")
+        logger.info(f"Archivo SQL generado: {sql_file}")
+        logger.info("Revisa el archivo SQL antes de ejecutar sin --dry-run")
+        return True, "Dry-run completado"
+
+    logger.info(f"Ejecutando SQL en la base de datos...")
+
+    try:
+        # Copiar archivo SQL al contenedor
+        logger.info("Copiando archivo SQL al contenedor...")
+        subprocess.run(['docker', 'cp', sql_file, f'{CONTAINER_NAME}:/tmp/'], check=True)
+
+        # Ejecutar SQL
+        logger.info("Ejecutando SQL...")
+        result = subprocess.run([
+            'docker', 'exec', CONTAINER_NAME,
+            'psql', '-U', DB_USER, '-d', DB_NAME, '-f', f'/tmp/{sql_file}'
+        ], capture_output=True, text=True)
+
+        if result.returncode == 0:
+            logger.success("SQL ejecutado exitosamente!")
+            return True, result.stdout
+        else:
+            logger.error("Error ejecutando SQL")
+            logger.error(result.stderr)
+            return False, result.stderr
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error ejecutando SQL: {str(e)}")
+        return False, str(e)
+    except Exception as e:
+        logger.error(f"Error inesperado: {str(e)}")
+        return False, str(e)
+
+def verify_import(expected_count: int) -> bool:
+    """Verificar que la importación fue exitosa"""
+    logger.info("Verificando importación...")
+
+    try:
+        result = subprocess.run([
+            'docker', 'exec', CONTAINER_NAME,
+            'psql', '-U', DB_USER, '-d', DB_NAME,
+            '-t', '-c', 'SELECT COUNT(*) FROM products WHERE "isActive" = true;'
+        ], capture_output=True, text=True, check=True)
+
+        actual_count = int(result.stdout.strip())
+        logger.info(f"Productos activos en BD: {actual_count}")
+        logger.info(f"Productos en CSV: {expected_count}")
+
+        if actual_count >= expected_count:
+            logger.success("Verificación exitosa: Todos los productos fueron procesados")
+            return True
+        else:
+            logger.warning(f"Advertencia: Hay menos productos en BD ({actual_count}) que en CSV ({expected_count})")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error verificando importación: {str(e)}")
+        return False
+
+# =============== FUNCIÓN PRINCIPAL ===============
+def main():
+    """Función principal"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Importador SEGURO de productos con UPSERT',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Ejemplos de uso:
+  # Modo dry-run (solo genera SQL, no modifica BD)
+  python import_csv_safe.py --dry-run
+
+  # Importar productos (con backup automático)
+  python import_csv_safe.py
+
+  # Importar sin crear backup (NO RECOMENDADO)
+  python import_csv_safe.py --no-backup
+        """
+    )
+
+    parser.add_argument('--dry-run', action='store_true',
+                       help='Solo generar SQL sin ejecutar (para revisar antes)')
+    parser.add_argument('--no-backup', action='store_true',
+                       help='No crear backup antes de importar (NO RECOMENDADO)')
+
+    args = parser.parse_args()
+
+    print("=" * 70)
+    print("  IMPORTADOR SEGURO DE PRODUCTOS CON UPSERT")
+    print("=" * 70)
+    logger.info("Iniciando importación...")
+
+    # 1. Leer y validar CSV
+    logger.info("\n=== PASO 1/5: Leer y validar CSV ===")
+    products, errors = read_csv_and_validate()
+
+    # Verificar si hay productos válidos
+    if not products:
+        logger.error("No se encontraron productos válidos en el CSV")
+        if errors:
+            logger.error(f"Total de errores: {len(errors)}")
+        print("\n" + logger.get_summary())
+        sys.exit(1)
+
+    # Si hay errores pero también productos válidos, solo advertir
+    if errors:
+        logger.warning(f"\nSe omitieron {len(errors)} productos con errores")
+        logger.warning("Estos productos NO se importarán, pero el resto SÍ")
+        for error in errors[:10]:  # Mostrar solo los primeros 10
+            logger.warning(f"  - {error}")
+        if len(errors) > 10:
+            logger.warning(f"  ... y {len(errors) - 10} errores más")
+
+    logger.success(f"CSV validado correctamente: {len(products)} productos")
+
+    # 2. Generar SQL
+    logger.info("\n=== PASO 2/5: Generar SQL con UPSERT ===")
+    if not generate_sql_file(products, SQL_OUTPUT_FILE):
+        logger.error("Error generando archivo SQL")
+        sys.exit(1)
+
+    # 3. Crear backup (si no es dry-run y no se especificó --no-backup)
+    if not args.dry_run and not args.no_backup:
+        logger.info("\n=== PASO 3/5: Crear backup de seguridad ===")
+        if not create_backup():
+            logger.error("Error creando backup. Abortando por seguridad.")
+            logger.error("Usa --no-backup para omitir (NO RECOMENDADO)")
+            sys.exit(1)
+    else:
+        if args.dry_run:
+            logger.info("\n=== PASO 3/5: Backup omitido (modo dry-run) ===")
+        else:
+            logger.warning("\n=== PASO 3/5: Backup omitido (--no-backup) ===")
+
+    # 4. Ejecutar SQL
+    logger.info("\n=== PASO 4/5: Ejecutar SQL ===")
+    success, output = execute_sql(SQL_OUTPUT_FILE, dry_run=args.dry_run)
+
+    if not success:
+        logger.error("Error ejecutando SQL. Los cambios NO fueron aplicados.")
+        logger.error("Revisa el log para más detalles")
+        sys.exit(1)
+
+    if args.dry_run:
+        logger.success("\n=== DRY-RUN COMPLETADO ===")
+        logger.info(f"Revisa el archivo generado: {SQL_OUTPUT_FILE}")
+        logger.info("Si todo se ve bien, ejecuta sin --dry-run")
+        print("\n" + logger.get_summary())
+        sys.exit(0)
+
+    # 5. Verificar importación
+    logger.info("\n=== PASO 5/5: Verificar importación ===")
+    verify_import(len(products))
+
+    # Resumen final
+    print("\n" + "=" * 70)
+    print("  IMPORTACIÓN COMPLETADA")
+    print("=" * 70)
+    logger.success(f"Total productos procesados: {len(products)}")
+    logger.info(f"Log guardado en: {LOG_FILE}")
+    if not args.no_backup:
+        logger.info(f"Backup guardado en: {BACKUP_FILE}")
+    print(logger.get_summary())
+    print("=" * 70)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.warning("\nImportación cancelada por el usuario")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error fatal: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)

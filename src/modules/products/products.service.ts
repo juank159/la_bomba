@@ -334,6 +334,7 @@ export class ProductsService {
   async findAllTemporaryProducts(): Promise<TemporaryProduct[]> {
     return this.temporaryProductsRepository.find({
       order: { createdAt: "DESC" },
+      relations: ['completedByAdminUser', 'completedBySupervisorUser'],
     });
   }
 
@@ -362,9 +363,13 @@ export class ProductsService {
       temporaryProduct.completedByAdmin = adminId;
       temporaryProduct.completedByAdminAt = new Date();
 
-      const savedProduct = await this.temporaryProductsRepository.save(
-        temporaryProduct
-      );
+      await this.temporaryProductsRepository.save(temporaryProduct);
+
+      // Reload product with user relations
+      const savedProduct = await this.temporaryProductsRepository.findOne({
+        where: { id: temporaryProduct.id },
+        relations: ['completedByAdminUser', 'completedBySupervisorUser'],
+      });
 
       // Notificar a todos los supervisores con los detalles de precios e IVA
       const supervisors = await this.usersRepository.find({
@@ -374,16 +379,16 @@ export class ProductsService {
       // Construir mensaje detallado con precios e IVA
       const priceDetails = [];
       if (savedProduct.precioA !== null && savedProduct.precioA !== undefined) {
-        priceDetails.push(`Precio A: $${savedProduct.precioA.toFixed(2)}`);
+        priceDetails.push(`Precio A: $${Number(savedProduct.precioA).toFixed(2)}`);
       }
       if (savedProduct.precioB !== null && savedProduct.precioB !== undefined) {
-        priceDetails.push(`Precio B: $${savedProduct.precioB.toFixed(2)}`);
+        priceDetails.push(`Precio B: $${Number(savedProduct.precioB).toFixed(2)}`);
       }
       if (savedProduct.precioC !== null && savedProduct.precioC !== undefined) {
-        priceDetails.push(`Precio C: $${savedProduct.precioC.toFixed(2)}`);
+        priceDetails.push(`Precio C: $${Number(savedProduct.precioC).toFixed(2)}`);
       }
       if (savedProduct.costo !== null && savedProduct.costo !== undefined) {
-        priceDetails.push(`Costo: $${savedProduct.costo.toFixed(2)}`);
+        priceDetails.push(`Costo: $${Number(savedProduct.costo).toFixed(2)}`);
       }
 
       const ivaText =
@@ -414,7 +419,13 @@ export class ProductsService {
       return savedProduct;
     }
 
-    return this.temporaryProductsRepository.save(temporaryProduct);
+    await this.temporaryProductsRepository.save(temporaryProduct);
+
+    // Reload with user relations
+    return this.temporaryProductsRepository.findOne({
+      where: { id: temporaryProduct.id },
+      relations: ['completedByAdminUser', 'completedBySupervisorUser'],
+    });
   }
 
   async findTemporaryProduct(id: string): Promise<TemporaryProduct> {
@@ -491,9 +502,21 @@ export class ProductsService {
         : `Nota del supervisor: ${notes}`;
     }
 
-    const savedProduct = await this.temporaryProductsRepository.save(
-      temporaryProduct
-    );
+    await this.temporaryProductsRepository.save(temporaryProduct);
+
+    // Reload product with user relations
+    const savedProduct = await this.temporaryProductsRepository.findOne({
+      where: { id: temporaryProduct.id },
+      relations: ['completedByAdminUser', 'completedBySupervisorUser'],
+    });
+
+    console.log('✅ Producto temporal completado:', {
+      id: savedProduct.id,
+      name: savedProduct.name,
+      completedBySupervisor: savedProduct.completedBySupervisor,
+      hasCompletedBySupervisorUser: !!savedProduct.completedBySupervisorUser,
+      username: savedProduct.completedBySupervisorUser?.username,
+    });
 
     // Notificar al admin que creó el producto temporal
     await this.notificationsService.createNotification(
