@@ -1,0 +1,104 @@
+═══════════════════════════════════════════════════════════════════════
+  VARIABLES DE ENTORNO PARA RENDER - COPIA Y PEGA DIRECTAMENTE
+═══════════════════════════════════════════════════════════════════════
+
+⚠️  INSTRUCCIONES:
+1. Ve a Render Dashboard: https://dashboard.render.com
+2. Tu servicio → Environment
+3. Copia CADA variable de abajo y pégala EN RENDER
+4. Haz click en "Save Changes"
+
+───────────────────────────────────────────────────────────────────────
+📋 COPIA ESTO (una variable por línea en Render):
+───────────────────────────────────────────────────────────────────────
+
+Variable 1 de 6:
+─────────────────
+Key:   NODE_ENV
+Value: production
+
+Variable 2 de 6:
+─────────────────
+Key:   PORT
+Value: 10000
+
+Variable 3 de 6: ⚠️ LA MÁS IMPORTANTE - INCLUYE ?sslmode=require
+─────────────────
+Key:   DATABASE_URL
+Value: postgresql://postgres:Bauduty0159@db.yeeziftpvdmiuljncbva.supabase.co:5432/postgres?sslmode=require
+
+Variable 4 de 6: ⚠️ USA ESTE JWT_SECRET O GENERA UNO NUEVO
+─────────────────
+Key:   JWT_SECRET
+Value: sVbRdO9n/ryZQFpbPrH964nMCtPsX0tyu/RALEWvA44CCAGygQWvPKFmzi3byjoyiA9ttmVacTVFxwhQZ7JWAg==
+
+Variable 5 de 6:
+─────────────────
+Key:   JWT_EXPIRES_IN
+Value: 7d
+
+Variable 6 de 6: ⚠️ CAMBIA ESTO POR TU URL REAL DE FRONTEND
+─────────────────
+Key:   ALLOWED_ORIGINS
+Value: https://tu-frontend.onrender.com
+
+═══════════════════════════════════════════════════════════════════════
+  CONFIGURACIÓN ADICIONAL EN RENDER
+═══════════════════════════════════════════════════════════════════════
+
+Build Command:
+npm install && npm run build
+
+Start Command:
+npm run start:prod
+
+Health Check Path:
+/health
+
+═══════════════════════════════════════════════════════════════════════
+  ¿QUÉ ERROR ESTÁS VIENDO?
+═══════════════════════════════════════════════════════════════════════
+
+Busca en los LOGS de Render (Dashboard → Tu servicio → Logs):
+
+1. Si ves: "ECONNREFUSED" o "ETIMEDOUT"
+   └─> Ve a Supabase → Settings → Database
+       Desactiva "IP Address Restrictions"
+
+2. Si ves: "SSL connection required"
+   └─> Asegúrate de tener ?sslmode=require en DATABASE_URL
+
+3. Si ves: "Authentication failed"
+   └─> Verifica usuario y contraseña en Supabase
+
+4. Si ves: "Cannot find module"
+   └─> Revisa que el Build Command sea correcto
+
+5. Si ves: "Port 3000 already in use"
+   └─> Asegúrate de tener PORT=10000 en Environment
+
+═══════════════════════════════════════════════════════════════════════
+  DESPUÉS DEL DEPLOY
+═══════════════════════════════════════════════════════════════════════
+
+Prueba tu API:
+curl https://TU-APP.onrender.com/health
+
+Deberías ver:
+{
+  "status": "ok",
+  "timestamp": "2025-...",
+  "uptime": 123.45,
+  "environment": "production"
+}
+
+═══════════════════════════════════════════════════════════════════════
+  ¿NECESITAS AYUDA?
+═══════════════════════════════════════════════════════════════════════
+
+1. Verifica los LOGS en Render Dashboard
+2. Revisa que Supabase permita conexiones externas
+3. Asegúrate de haber agregado TODAS las variables (6 en total)
+4. Espera ~5 minutos para el primer deploy
+
+═══════════════════════════════════════════════════════════════════════

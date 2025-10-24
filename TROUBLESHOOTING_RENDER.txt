@@ -1,0 +1,189 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║               DIAGNÓSTICO DE PROBLEMAS EN RENDER                         ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PASO 1: ¿QUÉ ERROR ESTÁS VIENDO EN LOS LOGS?                            │
+└──────────────────────────────────────────────────────────────────────────┘
+
+Ve a: Render Dashboard → Tu Servicio → Logs
+
+┌─────────────────────────────────────────────────────────────┐
+│ ERROR: "connect ETIMEDOUT" o "connect ECONNREFUSED"        │
+├─────────────────────────────────────────────────────────────┤
+│ CAUSA: Supabase bloqueando conexiones                      │
+│                                                             │
+│ SOLUCIÓN:                                                   │
+│ 1. Ve a https://app.supabase.com                          │
+│ 2. Selecciona tu proyecto                                  │
+│ 3. Settings → Database                                      │
+│ 4. Busca "Network Restrictions"                            │
+│ 5. DESACTIVA "Restrict connections to certain IPs"         │
+│                                                             │
+│ O ALTERNATIVAMENTE:                                         │
+│ - Usa Connection Pooler en vez de conexión directa        │
+│ - Settings → Database → Connection Pooling                 │
+│ - Copia esa URL y úsala en DATABASE_URL                   │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ ERROR: "SSL connection required" o "no pg_hba.conf entry"  │
+├─────────────────────────────────────────────────────────────┤
+│ CAUSA: Falta configuración SSL en la URL                   │
+│                                                             │
+│ SOLUCIÓN:                                                   │
+│ Asegúrate de que tu DATABASE_URL incluya:                  │
+│ ?sslmode=require                                            │
+│                                                             │
+│ URL CORRECTA:                                               │
+│ postgresql://postgres:Bauduty0159@                         │
+│ db.yeeziftpvdmiuljncbva.supabase.co:5432/postgres          │
+│ ?sslmode=require ← ESTO ES CRÍTICO                         │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ ERROR: "password authentication failed"                     │
+├─────────────────────────────────────────────────────────────┤
+│ CAUSA: Contraseña o usuario incorrecto                     │
+│                                                             │
+│ SOLUCIÓN:                                                   │
+│ 1. Ve a Supabase → Settings → Database                     │
+│ 2. Mira la "Connection string"                             │
+│ 3. Compara con tu DATABASE_URL en Render                   │
+│ 4. Asegúrate de que sean EXACTAMENTE iguales              │
+│                                                             │
+│ CREDENCIALES VERIFICADAS:                                   │
+│ Usuario: postgres                                           │
+│ Password: Bauduty0159                                       │
+│ Host: db.yeeziftpvdmiuljncbva.supabase.co                 │
+│ Puerto: 5432                                                │
+│ BD: postgres                                                │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ ERROR: "Application failed to start" (sin más detalles)    │
+├─────────────────────────────────────────────────────────────┤
+│ CAUSA: Faltan variables de entorno                         │
+│                                                             │
+│ SOLUCIÓN:                                                   │
+│ Verifica que TODAS estas variables existan en Render:      │
+│ ✓ NODE_ENV = production                                    │
+│ ✓ PORT = 10000                                             │
+│ ✓ DATABASE_URL = postgresql://...?sslmode=require          │
+│ ✓ JWT_SECRET = (64+ caracteres)                           │
+│ ✓ JWT_EXPIRES_IN = 7d                                      │
+│ ✓ ALLOWED_ORIGINS = https://...                           │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ ERROR: "Cannot find module '@nestjs/...'"                   │
+├─────────────────────────────────────────────────────────────┤
+│ CAUSA: Problema en el build                                │
+│                                                             │
+│ SOLUCIÓN:                                                   │
+│ 1. Ve a Render → Tu servicio → Settings                    │
+│ 2. Build Command debe ser:                                 │
+│    npm install && npm run build                            │
+│ 3. Start Command debe ser:                                 │
+│    npm run start:prod                                      │
+│ 4. Haz "Manual Deploy" → "Clear build cache & deploy"     │
+└─────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PASO 2: VERIFICAR CONFIGURACIÓN DE SUPABASE                             │
+└──────────────────────────────────────────────────────────────────────────┘
+
+1. Ve a: https://app.supabase.com
+2. Selecciona tu proyecto
+3. Settings → Database
+
+Verifica:
+┌─────────────────────────────────────────────────────┐
+│ ✓ Connection Pooling: ENABLED                       │
+│ ✓ SSL Enforcement: REQUIRED                         │
+│ ✓ IPv6: DISABLED (o IPv4 preferred)                │
+│ ✗ IP Address Restrictions: DISABLED                │
+└─────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PASO 3: VERIFICAR VARIABLES EN RENDER                                   │
+└──────────────────────────────────────────────────────────────────────────┘
+
+Ve a: Render Dashboard → Tu Servicio → Environment
+
+Cuenta cuántas variables tienes:
+┌─────────────────────────────────────────────────────┐
+│ Deberías tener EXACTAMENTE 6 variables:             │
+│ 1. NODE_ENV                                         │
+│ 2. PORT                                             │
+│ 3. DATABASE_URL                                     │
+│ 4. JWT_SECRET                                       │
+│ 5. JWT_EXPIRES_IN                                   │
+│ 6. ALLOWED_ORIGINS                                  │
+└─────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PASO 4: VERIFICAR QUE LA APP ESTÉ "LIVE"                                │
+└──────────────────────────────────────────────────────────────────────────┘
+
+En Render Dashboard:
+┌─────────────────────────────────────────────────────┐
+│ Estado debe decir: ● Live (verde)                   │
+│                                                      │
+│ Si dice:                                             │
+│ ○ Build Failed (rojo)    → Revisa Build Command    │
+│ ○ Deploy in progress     → Espera (~5 min)         │
+│ ○ Sleeping               → Haz una petición HTTP    │
+└─────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PASO 5: PROBAR LA CONEXIÓN                                              │
+└──────────────────────────────────────────────────────────────────────────┘
+
+Desde tu terminal:
+curl https://TU-APP.onrender.com/health
+
+✓ RESPUESTA EXITOSA:
+{
+  "status": "ok",
+  "timestamp": "2025-10-24T...",
+  "uptime": 123.45,
+  "environment": "production"
+}
+
+✗ SI FALLA:
+- Revisa los logs en Render Dashboard
+- Busca líneas que digan ERROR o Failed
+- Copia el error exacto y revisa este documento
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                       CHECKLIST FINAL                                     ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Antes de pedir más ayuda, verifica:
+
+□ ¿Pusheaste los cambios a GitHub?
+□ ¿Render tiene las 6 variables de entorno?
+□ ¿DATABASE_URL incluye ?sslmode=require?
+□ ¿Supabase permite conexiones externas?
+□ ¿El servicio está "Live" en Render?
+□ ¿Esperaste al menos 5 minutos para el deploy?
+□ ¿Los logs muestran algún error específico?
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    COMANDO DE EMERGENCIA                                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Si TODO falla, usa Connection Pooler de Supabase:
+
+1. Ve a Supabase → Settings → Database
+2. Busca "Connection Pooling"
+3. Copia la URL del Pooler (puerto 6543, no 5432)
+4. Reemplaza DATABASE_URL en Render con esa URL
+5. Asegúrate de agregar ?sslmode=require al final
+
+Ejemplo:
+postgresql://postgres.yeeziftpvdmiuljncbva:[PASSWORD]@
+aws-0-us-west-1.pooler.supabase.com:6543/postgres?sslmode=require
+
+╔══════════════════════════════════════════════════════════════════════════╗
