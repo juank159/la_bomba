@@ -25,13 +25,17 @@ Value: 10000
 
 ---
 
-#### Variable 3: DATABASE_URL (OPCIÓN RECOMENDADA)
+#### Variable 3: DATABASE_URL (USA CONNECTION POOLER)
 ```
 Key: DATABASE_URL
-Value: postgresql://postgres:Bauduty0159@db.yeeziftpvdmiuljncbva.supabase.co:5432/postgres?sslmode=require
+Value: postgresql://postgres.yeeziftpvdmiuljncbva:Bauduty0159@aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
 ```
 
-⚠️ **CRÍTICO**: Nota el `?sslmode=require` al final
+⚠️ **CRÍTICO**:
+- Usa el Connection Pooler (aws-1-us-east-1.pooler.supabase.com)
+- Puerto 6543 (Transaction mode pooler)
+- Username incluye el proyecto: postgres.yeeziftpvdmiuljncbva
+- Nota el `?sslmode=require` al final
 
 ---
 
@@ -280,7 +284,7 @@ Copia esto en Render Environment:
 ```
 NODE_ENV=production
 PORT=10000
-DATABASE_URL=postgresql://postgres:Bauduty0159@db.yeeziftpvdmiuljncbva.supabase.co:5432/postgres?sslmode=require
+DATABASE_URL=postgresql://postgres.yeeziftpvdmiuljncbva:Bauduty0159@aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
 JWT_SECRET=sVbRdO9n/ryZQFpbPrH964nMCtPsX0tyu/RALEWvA44CCAGygQWvPKFmzi3byjoyiA9ttmVacTVFxwhQZ7JWAg==
 JWT_EXPIRES_IN=7d
 ALLOWED_ORIGINS=https://tu-frontend.onrender.com

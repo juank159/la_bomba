@@ -22,10 +22,10 @@ Variable 2 de 6:
 Key:   PORT
 Value: 10000
 
-Variable 3 de 6: ⚠️ LA MÁS IMPORTANTE - INCLUYE ?sslmode=require
+Variable 3 de 6: ⚠️ LA MÁS IMPORTANTE - USA CONNECTION POOLER
 ─────────────────
 Key:   DATABASE_URL
-Value: postgresql://postgres:Bauduty0159@db.yeeziftpvdmiuljncbva.supabase.co:5432/postgres?sslmode=require
+Value: postgresql://postgres.yeeziftpvdmiuljncbva:Bauduty0159@aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
 
 Variable 4 de 6: ⚠️ USA ESTE JWT_SECRET O GENERA UNO NUEVO
 ─────────────────

@@ -16,22 +16,32 @@ export class EnvironmentVariables {
   @Max(65535)
   PORT: number;
 
+  // Database connection - Use either DATABASE_URL or individual variables
   @IsString()
-  DB_HOST: string;
+  @IsOptional()
+  DATABASE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  DB_HOST?: string;
 
   @IsNumber()
   @Min(1)
   @Max(65535)
-  DB_PORT: number;
+  @IsOptional()
+  DB_PORT?: number;
 
   @IsString()
-  DB_USERNAME: string;
+  @IsOptional()
+  DB_USERNAME?: string;
 
   @IsString()
-  DB_PASSWORD: string;
+  @IsOptional()
+  DB_PASSWORD?: string;
 
   @IsString()
-  DB_NAME: string;
+  @IsOptional()
+  DB_NAME?: string;
 
   @IsString()
   JWT_SECRET: string;
@@ -56,6 +66,22 @@ export function validate(config: Record<string, unknown>) {
   if (errors.length > 0) {
     throw new Error(
       `❌ Environment validation failed:\n${errors.map(err => Object.values(err.constraints || {}).join(', ')).join('\n')}`
+    );
+  }
+
+  // Validate that either DATABASE_URL or individual DB variables are provided
+  const hasDbUrl = !!validatedConfig.DATABASE_URL;
+  const hasIndividualVars = !!(
+    validatedConfig.DB_HOST &&
+    validatedConfig.DB_PORT &&
+    validatedConfig.DB_USERNAME &&
+    validatedConfig.DB_PASSWORD &&
+    validatedConfig.DB_NAME
+  );
+
+  if (!hasDbUrl && !hasIndividualVars) {
+    throw new Error(
+      `❌ Database configuration missing: Provide either DATABASE_URL or all individual DB variables (DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME)`
     );
   }
 
