@@ -17,7 +17,8 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT') || 3000;
+  // Render usa PORT=10000, pero también soporta process.env.PORT
+  const port = parseInt(process.env.PORT, 10) || configService.get<number>('PORT') || 3000;
   const nodeEnv = configService.get<string>('environment') || 'development';
   const isDevelopment = nodeEnv === 'development';
 
@@ -71,9 +72,10 @@ async function bootstrap() {
     logger.log(`📚 Swagger documentation available at http://localhost:${port}/api/docs`);
   }
 
-  await app.listen(port);
+  // Render requiere escuchar en 0.0.0.0, no solo localhost
+  await app.listen(port, '0.0.0.0');
 
-  logger.log(`🚀 Application is running on: http://localhost:${port}`);
+  logger.log(`🚀 Application is running on: http://0.0.0.0:${port}`);
   logger.log(`📦 Environment: ${nodeEnv}`);
   logger.log(`🔒 CORS enabled for: ${allowedOrigins || 'http://localhost:3000'}`);
 }
