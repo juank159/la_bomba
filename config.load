@@ -17,3 +17,4 @@ LOAD DATABASE
       type decimal to numeric drop default drop not null;
 
 ALTER SCHEMA pedidos_db RENAME TO public;
+     password Bauduty0159
