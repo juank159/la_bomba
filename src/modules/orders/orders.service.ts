@@ -31,6 +31,7 @@ export class OrdersService {
         orderId: savedOrder.id,
         productId: item.productId,
         temporaryProductId: item.temporaryProductId,
+        supplierId: item.supplierId,
         existingQuantity: item.existingQuantity,
         requestedQuantity: item.requestedQuantity,
         measurementUnit: item.measurementUnit,
@@ -44,7 +45,7 @@ export class OrdersService {
 
   async findAll(): Promise<Order[]> {
     return this.ordersRepository.find({
-      relations: ['createdBy', 'items', 'items.product', 'items.temporaryProduct'],
+      relations: ['createdBy', 'items', 'items.product', 'items.temporaryProduct', 'items.supplier'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -52,7 +53,7 @@ export class OrdersService {
   async findOne(id: string): Promise<Order> {
     const order = await this.ordersRepository.findOne({
       where: { id },
-      relations: ['createdBy', 'items', 'items.product', 'items.temporaryProduct'],
+      relations: ['createdBy', 'items', 'items.product', 'items.temporaryProduct', 'items.supplier'],
     });
 
     if (!order) {
@@ -88,6 +89,7 @@ export class OrdersService {
           orderId: id,
           productId: item.productId,
           temporaryProductId: item.temporaryProductId,
+          supplierId: item.supplierId,
           existingQuantity: item.existingQuantity,
           requestedQuantity: item.requestedQuantity,
           measurementUnit: item.measurementUnit,
@@ -214,6 +216,62 @@ export class OrdersService {
     }
 
     await this.orderItemsRepository.save(orderItem);
+    return this.findOne(orderId);
+  }
+
+  /**
+   * Group order items by supplier
+   * Returns a map of supplier ID to items
+   */
+  async groupItemsBySupplier(orderId: string): Promise<Record<string, OrderItem[]>> {
+    const order = await this.findOne(orderId);
+
+    const groupedItems: Record<string, OrderItem[]> = {};
+
+    for (const item of order.items) {
+      // Use supplier ID or 'unassigned' key
+      const key = item.supplierId || 'unassigned';
+
+      if (!groupedItems[key]) {
+        groupedItems[key] = [];
+      }
+
+      groupedItems[key].push(item);
+    }
+
+    return groupedItems;
+  }
+
+  /**
+   * Assign a supplier to an order item
+   * Only admins can assign suppliers
+   */
+  async assignSupplierToItem(
+    orderId: string,
+    itemId: string,
+    supplierId: string,
+    userRole: UserRole
+  ): Promise<Order> {
+    // Only admins can assign suppliers
+    if (userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only admins can assign suppliers to order items');
+    }
+
+    const order = await this.findOne(orderId);
+
+    // Find the order item
+    const orderItem = await this.orderItemsRepository.findOne({
+      where: { id: itemId, orderId }
+    });
+
+    if (!orderItem) {
+      throw new NotFoundException('Order item not found');
+    }
+
+    // Update the supplier
+    orderItem.supplierId = supplierId;
+    await this.orderItemsRepository.save(orderItem);
+
     return this.findOne(orderId);
   }
 

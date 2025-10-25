@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 't
 import { Order } from './order.entity';
 import { Product } from '../../products/entities/product.entity';
 import { TemporaryProduct } from '../../products/entities/temporary-product.entity';
+import { Supplier } from '../../suppliers/entities/supplier.entity';
 
 export enum MeasurementUnit {
   UNIDAD = 'unidad',
@@ -41,6 +42,13 @@ export class OrderItem {
 
   @Column({ name: 'temporary_product_id', nullable: true })
   temporaryProductId: string;
+
+  @ManyToOne(() => Supplier, { nullable: true })
+  @JoinColumn({ name: 'supplier_id' })
+  supplier: Supplier;
+
+  @Column({ name: 'supplier_id', nullable: true })
+  supplierId: string;
 
   @Column({ type: 'int' })
   existingQuantity: number;

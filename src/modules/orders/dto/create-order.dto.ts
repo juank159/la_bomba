@@ -11,6 +11,10 @@ export class CreateOrderItemDto {
   @IsString()
   temporaryProductId?: string;
 
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
+
   @IsNumber()
   @IsNotEmpty()
   existingQuantity: number;

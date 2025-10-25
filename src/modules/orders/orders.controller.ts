@@ -68,6 +68,25 @@ export class OrdersController {
     return this.ordersService.updateOrderItemQuantity(orderId, itemId, updateDto, req.user.role, req.user.userId);
   }
 
+  @Get(':id/by-supplier')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
+  getOrderGroupedBySupplier(@Param('id') id: string) {
+    return this.ordersService.groupItemsBySupplier(id);
+  }
+
+  @Patch(':id/items/:itemId/supplier')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  assignSupplierToItem(
+    @Param('id') orderId: string,
+    @Param('itemId') itemId: string,
+    @Body('supplierId') supplierId: string,
+    @Request() req
+  ) {
+    return this.ordersService.assignSupplierToItem(orderId, itemId, supplierId, req.user.role);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.ordersService.remove(id);
