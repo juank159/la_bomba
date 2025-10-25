@@ -159,13 +159,13 @@ export class AuthService {
     await this.recoveryTokensRepository.save(recoveryToken);
 
     // Send email with recovery code
-    // Check if email is properly configured
+    // Check if Resend is properly configured
     const isDevelopment = process.env.NODE_ENV !== 'production';
-    const hasEmailConfig = process.env.EMAIL_USER && process.env.EMAIL_PASSWORD;
+    const hasResendConfig = process.env.RESEND_API_KEY;
 
-    if (isDevelopment || !hasEmailConfig) {
+    if (isDevelopment || !hasResendConfig) {
       // Development mode or no email configured: return code in response
-      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Email not configured)`);
+      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Resend not configured)`);
       return {
         message: 'Código de recuperación generado',
         code, // Return code directly in development
