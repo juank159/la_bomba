@@ -34,13 +34,29 @@ export class NotificationsService {
   }
 
   async getNotificationsByUser(userId: string, limit: number = 50): Promise<Notification[]> {
-    // Retornar solo las últimas 50 notificaciones para optimizar
-    return await this.notificationsRepository.find({
-      where: { userId },
-      relations: ['product'],
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+    console.log('📧 getNotificationsByUser called with:', { userId, limit, userIdType: typeof userId });
+
+    try {
+      // Retornar solo las últimas 50 notificaciones para optimizar
+      // Removed 'product' relation to avoid JOIN errors with deleted/invalid products
+      const notifications = await this.notificationsRepository.find({
+        where: { userId },
+        // relations: ['product'], // Temporarily removed - can cause errors if products are deleted
+        order: { createdAt: 'DESC' },
+        take: limit,
+      });
+
+      console.log(`✅ Found ${notifications.length} notifications for user ${userId}`);
+      return notifications;
+    } catch (error) {
+      console.error('❌ Error fetching notifications:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        userId,
+      });
+      throw error;
+    }
   }
 
   async getUnreadCount(userId: string): Promise<number> {
