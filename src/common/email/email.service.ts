@@ -58,13 +58,13 @@ export class EmailService {
       });
 
       if (error) {
-        this.logger.error(`❌ Resend API error for ${to}:`, error);
-        throw new Error(`Resend error: ${error.message}`);
+        this.logger.error(`❌ Resend API error for ${to}:`, JSON.stringify(error));
+        throw new Error(`Resend error: ${JSON.stringify(error)}`);
       }
 
       this.logger.log(`✅ Recovery email sent to ${to} (ID: ${data?.id})`);
     } catch (error) {
-      this.logger.error(`❌ Failed to send email to ${to}`, error.stack);
+      this.logger.error(`❌ Failed to send email to ${to}`, error instanceof Error ? error.stack : String(error));
       throw new Error('Failed to send recovery email');
     }
   }
