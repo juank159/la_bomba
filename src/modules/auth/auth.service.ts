@@ -159,52 +159,34 @@ export class AuthService {
     await this.recoveryTokensRepository.save(recoveryToken);
 
     // Send email with recovery code
-    // Check if Brevo is properly configured
-    const isDevelopment = process.env.NODE_ENV !== 'production';
+    // TEMPORARY FIX: Always return code in response until Brevo is fully configured
+    // This allows the system to work while we fix the email service
+    this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Returning in response - email disabled temporarily)`);
+
+    return {
+      message: 'Código de recuperación generado',
+      code, // Always return code for now
+    };
+
+    // TODO: Enable email sending once Brevo is properly configured
+    /*
     const hasBrevoConfig = process.env.BREVO_API_KEY;
-
-    if (isDevelopment || !hasBrevoConfig) {
-      // Development mode or no email configured: return code in response
-      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Brevo not configured)`);
-      return {
-        message: 'Código de recuperación generado',
-        code, // Return code directly in development
-      };
-    }
-
-    // Production mode: try to send email with timeout
-    let emailSent = false;
-    try {
-      // Add 10-second timeout to email sending to avoid long waits
-      await Promise.race([
-        this.emailService.sendRecoveryCode({
+    if (hasBrevoConfig) {
+      try {
+        await this.emailService.sendRecoveryCode({
           to: user.email,
           code,
           username: user.username,
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Email timeout after 10 seconds')), 10000)
-        ),
-      ]);
-
-      this.logger.log(`✅ Recovery code sent to ${user.email}`);
-      emailSent = true;
-    } catch (error) {
-      this.logger.error(`❌ Failed to send recovery email to ${user.email}: ${error.message}`);
-      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Email failed - returning in response)`);
+        });
+        this.logger.log(`✅ Recovery code sent to ${user.email}`);
+        return {
+          message: 'Código enviado a tu email'
+        };
+      } catch (error) {
+        this.logger.error(`❌ Failed to send email: ${error.message}`);
+      }
     }
-
-    // If email failed, return code in response for development/testing
-    if (!emailSent) {
-      return {
-        message: 'Error al enviar email. Código de recuperación generado',
-        code, // Return code in response when email fails
-      };
-    }
-
-    return {
-      message: 'Si el email existe, recibirás un código de recuperación'
-    };
+    */
   }
 
   /**
