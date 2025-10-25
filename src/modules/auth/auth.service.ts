@@ -121,7 +121,7 @@ export class AuthService {
   /**
    * Request password reset - sends recovery code to user's email
    */
-  async requestPasswordReset(dto: RequestPasswordResetDto): Promise<{ message: string }> {
+  async requestPasswordReset(dto: RequestPasswordResetDto): Promise<{ message: string; code?: string }> {
     const { email } = dto;
 
     // Find user by email
