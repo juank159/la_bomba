@@ -159,18 +159,9 @@ export class AuthService {
     await this.recoveryTokensRepository.save(recoveryToken);
 
     // Send email with recovery code
-    // TEMPORARY FIX: Always return code in response until Brevo is fully configured
-    // This allows the system to work while we fix the email service
-    this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Returning in response - email disabled temporarily)`);
-
-    return {
-      message: 'Código de recuperación generado',
-      code, // Always return code for now
-    };
-
-    // TODO: Enable email sending once Brevo is properly configured
-    /*
     const hasBrevoConfig = process.env.BREVO_API_KEY;
+
+    // Try to send email if Brevo is configured
     if (hasBrevoConfig) {
       try {
         await this.emailService.sendRecoveryCode({
@@ -179,14 +170,28 @@ export class AuthService {
           username: user.username,
         });
         this.logger.log(`✅ Recovery code sent to ${user.email}`);
+
         return {
           message: 'Código enviado a tu email'
         };
       } catch (error) {
         this.logger.error(`❌ Failed to send email: ${error.message}`);
+        this.logger.warn(`🔑 Fallback: Recovery code for ${user.email}: ${code}`);
+
+        // Fallback: return code in response if email fails
+        return {
+          message: 'Error al enviar email. Código de recuperación generado',
+          code, // Return code as fallback
+        };
       }
     }
-    */
+
+    // If Brevo not configured, return code in response
+    this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Brevo not configured)`);
+    return {
+      message: 'Código de recuperación generado',
+      code,
+    };
   }
 
   /**
