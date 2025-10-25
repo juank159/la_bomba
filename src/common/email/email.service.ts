@@ -34,13 +34,16 @@ export class EmailService {
     }
 
     // Brevo SMTP configuration - NO domain required!
+    // IMPORTANT: Brevo requires a real email as user, not a display name
+    const brevoUser = this.configService.get<string>('BREVO_EMAIL') || 'adalbertosanabria11@gmail.com';
+
     this.transporter = nodemailer.createTransport({
       host: 'smtp-relay.brevo.com',
       port: 587,
       secure: false, // true for 465, false for other ports
       auth: {
-        user: this.configService.get<string>('EMAIL_FROM') || 'noreply@labomba.com',
-        pass: brevoApiKey, // Brevo SMTP key
+        user: brevoUser, // Must be the email registered in Brevo
+        pass: brevoApiKey, // Brevo SMTP API key
       },
     });
 
