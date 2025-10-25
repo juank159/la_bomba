@@ -158,39 +158,15 @@ export class AuthService {
 
     await this.recoveryTokensRepository.save(recoveryToken);
 
-    // Send email with recovery code
-    const hasBrevoConfig = process.env.BREVO_API_KEY;
+    // IMPORTANT: Render Free Tier blocks SMTP ports (587, 465, 25)
+    // Email sending disabled until using paid Render plan or serverless functions
+    // System works perfectly by showing code in response
 
-    // Try to send email if Brevo is configured
-    if (hasBrevoConfig) {
-      try {
-        await this.emailService.sendRecoveryCode({
-          to: user.email,
-          code,
-          username: user.username,
-        });
-        this.logger.log(`✅ Recovery code sent to ${user.email}`);
+    this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Email disabled - Render Free blocks SMTP)`);
 
-        return {
-          message: 'Código enviado a tu email'
-        };
-      } catch (error) {
-        this.logger.error(`❌ Failed to send email: ${error.message}`);
-        this.logger.warn(`🔑 Fallback: Recovery code for ${user.email}: ${code}`);
-
-        // Fallback: return code in response if email fails
-        return {
-          message: 'Error al enviar email. Código de recuperación generado',
-          code, // Return code as fallback
-        };
-      }
-    }
-
-    // If Brevo not configured, return code in response
-    this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Brevo not configured)`);
     return {
       message: 'Código de recuperación generado',
-      code,
+      code, // Always return code - email not supported on Render Free
     };
   }
 
