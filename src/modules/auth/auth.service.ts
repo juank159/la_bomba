@@ -159,13 +159,13 @@ export class AuthService {
     await this.recoveryTokensRepository.save(recoveryToken);
 
     // Send email with recovery code
-    // Check if Resend is properly configured
+    // Check if Brevo is properly configured
     const isDevelopment = process.env.NODE_ENV !== 'production';
-    const hasResendConfig = process.env.RESEND_API_KEY;
+    const hasBrevoConfig = process.env.BREVO_API_KEY;
 
-    if (isDevelopment || !hasResendConfig) {
+    if (isDevelopment || !hasBrevoConfig) {
       // Development mode or no email configured: return code in response
-      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Resend not configured)`);
+      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Brevo not configured)`);
       return {
         message: 'Código de recuperación generado',
         code, // Return code directly in development

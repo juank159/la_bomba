@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 import { LoggerService } from '../logger/logger.service';
 
 export interface SendRecoveryCodeEmailOptions {
@@ -11,31 +11,40 @@ export interface SendRecoveryCodeEmailOptions {
 
 @Injectable()
 export class EmailService {
-  private resend: Resend | null = null;
+  private transporter: nodemailer.Transporter | null = null;
   private fromEmail: string;
   private readonly logger = new LoggerService('EmailService');
 
   constructor(private configService: ConfigService) {
-    this.initializeResend();
+    this.initializeBrevo();
   }
 
   /**
-   * Initialize Resend email service
+   * Initialize Brevo (Sendinblue) SMTP service
    */
-  private initializeResend() {
-    const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
-    // Use Resend's free shared domain - NO custom domain needed
-    this.fromEmail = 'onboarding@resend.dev';
+  private initializeBrevo() {
+    const brevoApiKey = this.configService.get<string>('BREVO_API_KEY');
+    this.fromEmail = this.configService.get<string>('EMAIL_FROM') || 'La Bomba <noreply@labomba.com>';
 
-    if (!resendApiKey) {
+    if (!brevoApiKey) {
       this.logger.warn(
-        '⚠️ RESEND_API_KEY not configured. Password recovery emails will be logged to console only.'
+        '⚠️ BREVO_API_KEY not configured. Password recovery emails will be logged to console only.'
       );
       return;
     }
 
-    this.resend = new Resend(resendApiKey);
-    this.logger.log(`📧 Resend email service initialized with onboarding@resend.dev`);
+    // Brevo SMTP configuration - NO domain required!
+    this.transporter = nodemailer.createTransport({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false, // true for 465, false for other ports
+      auth: {
+        user: this.configService.get<string>('EMAIL_FROM') || 'noreply@labomba.com',
+        pass: brevoApiKey, // Brevo SMTP key
+      },
+    });
+
+    this.logger.log(`📧 Brevo SMTP service initialized`);
   }
 
   /**
@@ -44,26 +53,21 @@ export class EmailService {
   async sendRecoveryCode(options: SendRecoveryCodeEmailOptions): Promise<void> {
     const { to, code, username } = options;
 
-    // If Resend is not configured, log code and skip sending
-    if (!this.resend) {
-      this.logger.warn(`⚠️ Resend not configured. Recovery code for ${to}: ${code}`);
+    // If Brevo is not configured, log code and skip sending
+    if (!this.transporter) {
+      this.logger.warn(`⚠️ Brevo not configured. Recovery code for ${to}: ${code}`);
       throw new Error('Email service not configured');
     }
 
     try {
-      const { data, error } = await this.resend.emails.send({
+      const info = await this.transporter.sendMail({
         from: this.fromEmail,
-        to: [to],
+        to,
         subject: 'Recuperación de Contraseña - La Bomba',
         html: this.getRecoveryEmailTemplate(code, username),
       });
 
-      if (error) {
-        this.logger.error(`❌ Resend API error for ${to}:`, JSON.stringify(error));
-        throw new Error(`Resend error: ${JSON.stringify(error)}`);
-      }
-
-      this.logger.log(`✅ Recovery email sent to ${to} (ID: ${data?.id})`);
+      this.logger.log(`✅ Recovery email sent to ${to} (ID: ${info.messageId})`);
     } catch (error) {
       this.logger.error(`❌ Failed to send email to ${to}`, error instanceof Error ? error.stack : String(error));
       throw new Error('Failed to send recovery email');
@@ -179,17 +183,17 @@ export class EmailService {
    * Verify email service is working
    */
   async verifyConnection(): Promise<boolean> {
-    if (!this.resend) {
-      this.logger.warn('⚠️ Resend not configured');
+    if (!this.transporter) {
+      this.logger.warn('⚠️ Brevo not configured');
       return false;
     }
 
     try {
-      // Resend doesn't have a verify method, so we just check if it's initialized
-      this.logger.log('✅ Resend email service is configured');
+      await this.transporter.verify();
+      this.logger.log('✅ Brevo SMTP connection verified');
       return true;
     } catch (error) {
-      this.logger.error('❌ Email service check failed', error.stack);
+      this.logger.error('❌ Email service check failed', error instanceof Error ? error.stack : String(error));
       return false;
     }
   }
