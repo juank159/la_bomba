@@ -35,14 +35,21 @@ export class ProductsController {
   // Los empleados, supervisores y administradores pueden ver productos
   findAll(
     @Query("search") search?: string,
-    @Query("page") page?: number,
-    @Query("limit") limit?: number
+    @Query("page") page?: string,
+    @Query("limit") limit?: string
   ) {
     try {
-      console.log("FindAll called with:", { search, page, limit });
-      return this.productsService.findAll(search, page, limit);
+      // Convert string query params to numbers
+      const pageNum = page ? parseInt(page, 10) : undefined;
+      const limitNum = limit ? parseInt(limit, 10) : undefined;
+
+      console.log("FindAll called with:", { search, page: pageNum, limit: limitNum });
+      console.log("Original types:", { pageType: typeof page, limitType: typeof limit });
+
+      return this.productsService.findAll(search, pageNum, limitNum);
     } catch (error) {
       console.error("Error in findAll controller:", error);
+      console.error("Full error:", error);
       throw error;
     }
   }

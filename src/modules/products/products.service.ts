@@ -46,16 +46,33 @@ export class ProductsService {
     page?: number,
     limit?: number
   ): Promise<Product[]> {
+    console.log('📊 ProductsService.findAll called with:', { search, page, limit, types: { page: typeof page, limit: typeof limit } });
+
     if (search && search.trim().length > 0) {
       return this.searchProducts(search, page || 0, limit || 20);
     }
 
-    return this.productsRepository.find({
+    const queryOptions = {
       where: { isActive: true },
-      order: { createdAt: "DESC" },
-      skip: page ? page * (limit || 20) : undefined,
-      take: limit || undefined,
-    });
+      order: { createdAt: "DESC" as const },
+      skip: page !== undefined ? page * (limit || 20) : undefined,
+      take: limit !== undefined ? limit : undefined,
+    };
+
+    console.log('📊 Query options:', JSON.stringify(queryOptions, null, 2));
+
+    try {
+      const results = await this.productsRepository.find(queryOptions);
+      console.log(`✅ Found ${results.length} products`);
+      return results;
+    } catch (error) {
+      console.error('❌ Database query error in findAll:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
   }
 
   async findOne(id: string): Promise<Product> {
