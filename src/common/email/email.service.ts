@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { LoggerService } from '../logger/logger.service';
 
 export interface SendRecoveryCodeEmailOptions {
@@ -11,43 +11,30 @@ export interface SendRecoveryCodeEmailOptions {
 
 @Injectable()
 export class EmailService {
-  private transporter: nodemailer.Transporter;
+  private resend: Resend | null = null;
+  private fromEmail: string;
   private readonly logger = new LoggerService('EmailService');
 
   constructor(private configService: ConfigService) {
-    this.createTransporter();
+    this.initializeResend();
   }
 
   /**
-   * Create email transporter
+   * Initialize Resend email service
    */
-  private createTransporter() {
-    // Configuración para Gmail (puedes cambiar por otro proveedor)
-    const emailUser = this.configService.get<string>('EMAIL_USER');
-    const emailPass = this.configService.get<string>('EMAIL_PASSWORD');
+  private initializeResend() {
+    const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
+    this.fromEmail = this.configService.get<string>('EMAIL_FROM') || 'La Bomba <onboarding@resend.dev>';
 
-    if (!emailUser || !emailPass) {
+    if (!resendApiKey) {
       this.logger.warn(
-        '⚠️ Email credentials not configured. Password recovery emails will be logged to console.'
+        '⚠️ RESEND_API_KEY not configured. Password recovery emails will be logged to console only.'
       );
-      // Usar transporter de prueba que solo logea
-      this.transporter = nodemailer.createTransport({
-        streamTransport: true,
-        newline: 'unix',
-        buffer: true,
-      });
       return;
     }
 
-    this.transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: emailUser,
-        pass: emailPass, // App password, not regular password
-      },
-    });
-
-    this.logger.log(`📧 Email service initialized with ${emailUser}`);
+    this.resend = new Resend(resendApiKey);
+    this.logger.log(`📧 Resend email service initialized`);
   }
 
   /**
@@ -56,32 +43,28 @@ export class EmailService {
   async sendRecoveryCode(options: SendRecoveryCodeEmailOptions): Promise<void> {
     const { to, code, username } = options;
 
-    const mailOptions = {
-      from: `"La Bomba" <${this.configService.get<string>('EMAIL_USER')}>`,
-      to,
-      subject: 'Recuperación de Contraseña - La Bomba',
-      html: this.getRecoveryEmailTemplate(code, username),
-    };
+    // If Resend is not configured, log code and skip sending
+    if (!this.resend) {
+      this.logger.warn(`⚠️ Resend not configured. Recovery code for ${to}: ${code}`);
+      throw new Error('Email service not configured');
+    }
 
     try {
-      const info = await this.transporter.sendMail(mailOptions);
+      const { data, error } = await this.resend.emails.send({
+        from: this.fromEmail,
+        to: [to],
+        subject: 'Recuperación de Contraseña - La Bomba',
+        html: this.getRecoveryEmailTemplate(code, username),
+      });
 
-      // Si estamos en modo de prueba, loguear el código
-      if (info.response && info.response.toString().includes('stream')) {
-        this.logger.warn(
-          `⚠️ EMAIL NOT SENT (test mode). Recovery code for ${to}: ${code}`
-        );
-      } else {
-        this.logger.log(`✅ Recovery email sent to ${to}`);
+      if (error) {
+        this.logger.error(`❌ Resend API error for ${to}:`, error);
+        throw new Error(`Resend error: ${error.message}`);
       }
+
+      this.logger.log(`✅ Recovery email sent to ${to} (ID: ${data?.id})`);
     } catch (error) {
       this.logger.error(`❌ Failed to send email to ${to}`, error.stack);
-
-      // En desarrollo, loguear el código aunque falle el envío
-      if (this.configService.get('environment') === 'development') {
-        this.logger.warn(`🔑 Recovery code for ${to}: ${code}`);
-      }
-
       throw new Error('Failed to send recovery email');
     }
   }
@@ -195,12 +178,17 @@ export class EmailService {
    * Verify email service is working
    */
   async verifyConnection(): Promise<boolean> {
+    if (!this.resend) {
+      this.logger.warn('⚠️ Resend not configured');
+      return false;
+    }
+
     try {
-      await this.transporter.verify();
-      this.logger.log('✅ Email service connection verified');
+      // Resend doesn't have a verify method, so we just check if it's initialized
+      this.logger.log('✅ Resend email service is configured');
       return true;
     } catch (error) {
-      this.logger.error('❌ Email service connection failed', error.stack);
+      this.logger.error('❌ Email service check failed', error.stack);
       return false;
     }
   }
