@@ -10,6 +10,7 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { TodosModule } from './modules/todos/todos.module';
 import { ClientsModule } from './modules/clients/clients.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { HealthModule } from './health/health.module';
 import { createDatabaseConfig } from './config/database.config';
@@ -40,6 +41,7 @@ import configuration, { validateConfig } from './config/configuration';
     CreditsModule,
     TodosModule,
     ClientsModule,
+    SuppliersModule,
     NotificationsModule,
   ],
 })
