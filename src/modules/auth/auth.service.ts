@@ -159,31 +159,47 @@ export class AuthService {
     await this.recoveryTokensRepository.save(recoveryToken);
 
     // Send email with recovery code
-    // In development mode, skip email sending to avoid timeouts
+    // Check if email is properly configured
     const isDevelopment = process.env.NODE_ENV !== 'production';
+    const hasEmailConfig = process.env.EMAIL_USER && process.env.EMAIL_PASSWORD;
 
-    if (isDevelopment || !process.env.EMAIL_USER) {
+    if (isDevelopment || !hasEmailConfig) {
       // Development mode or no email configured: return code in response
-      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code}`);
+      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Email not configured)`);
       return {
         message: 'Código de recuperación generado',
         code, // Return code directly in development
       };
     }
 
-    // Production mode: send email
+    // Production mode: try to send email with timeout
+    let emailSent = false;
     try {
-      await this.emailService.sendRecoveryCode({
-        to: user.email,
-        code,
-        username: user.username,
-      });
+      // Add 10-second timeout to email sending to avoid long waits
+      await Promise.race([
+        this.emailService.sendRecoveryCode({
+          to: user.email,
+          code,
+          username: user.username,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Email timeout after 10 seconds')), 10000)
+        ),
+      ]);
 
-      this.logger.log(`Recovery code sent to ${user.email}`);
+      this.logger.log(`✅ Recovery code sent to ${user.email}`);
+      emailSent = true;
     } catch (error) {
-      this.logger.error(`Failed to send recovery email to ${user.email}`, error.stack);
-      // If email fails, log the code
-      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code}`);
+      this.logger.error(`❌ Failed to send recovery email to ${user.email}: ${error.message}`);
+      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code} (Email failed - returning in response)`);
+    }
+
+    // If email failed, return code in response for development/testing
+    if (!emailSent) {
+      return {
+        message: 'Error al enviar email. Código de recuperación generado',
+        code, // Return code in response when email fails
+      };
     }
 
     return {
