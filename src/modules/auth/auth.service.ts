@@ -159,6 +159,19 @@ export class AuthService {
     await this.recoveryTokensRepository.save(recoveryToken);
 
     // Send email with recovery code
+    // In development mode, skip email sending to avoid timeouts
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+
+    if (isDevelopment || !process.env.EMAIL_USER) {
+      // Development mode or no email configured: return code in response
+      this.logger.warn(`🔑 Recovery code for ${user.email}: ${code}`);
+      return {
+        message: 'Código de recuperación generado',
+        code, // Return code directly in development
+      };
+    }
+
+    // Production mode: send email
     try {
       await this.emailService.sendRecoveryCode({
         to: user.email,
@@ -169,7 +182,7 @@ export class AuthService {
       this.logger.log(`Recovery code sent to ${user.email}`);
     } catch (error) {
       this.logger.error(`Failed to send recovery email to ${user.email}`, error.stack);
-      // In development, log the code
+      // If email fails, log the code
       this.logger.warn(`🔑 Recovery code for ${user.email}: ${code}`);
     }
 
