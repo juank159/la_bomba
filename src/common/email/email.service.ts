@@ -24,7 +24,8 @@ export class EmailService {
    */
   private initializeResend() {
     const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
-    this.fromEmail = this.configService.get<string>('EMAIL_FROM') || 'La Bomba <onboarding@resend.dev>';
+    // Use Resend's free shared domain - NO custom domain needed
+    this.fromEmail = 'onboarding@resend.dev';
 
     if (!resendApiKey) {
       this.logger.warn(
@@ -34,7 +35,7 @@ export class EmailService {
     }
 
     this.resend = new Resend(resendApiKey);
-    this.logger.log(`📧 Resend email service initialized`);
+    this.logger.log(`📧 Resend email service initialized with onboarding@resend.dev`);
   }
 
   /**
