@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
-import { OrderItem } from './entities/order-item.entity';
+import { OrderItem, MeasurementUnit } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
@@ -187,7 +187,7 @@ export class OrdersService {
   async updateOrderItemQuantity(
     orderId: string,
     itemId: string,
-    updateDto: { existingQuantity?: number; requestedQuantity?: number },
+    updateDto: { existingQuantity?: number; requestedQuantity?: number; measurementUnit?: string },
     userRole: UserRole,
     userId?: string
   ): Promise<Order> {
@@ -207,12 +207,15 @@ export class OrdersService {
       throw new NotFoundException('Order item not found');
     }
 
-    // Update the quantities
+    // Update the quantities and measurement unit
     if (updateDto.existingQuantity !== undefined) {
       orderItem.existingQuantity = updateDto.existingQuantity;
     }
     if (updateDto.requestedQuantity !== undefined) {
       orderItem.requestedQuantity = updateDto.requestedQuantity;
+    }
+    if (updateDto.measurementUnit !== undefined) {
+      orderItem.measurementUnit = updateDto.measurementUnit as MeasurementUnit;
     }
 
     await this.orderItemsRepository.save(orderItem);
