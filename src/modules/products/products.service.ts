@@ -485,7 +485,8 @@ export class ProductsService {
   async completeTemporaryProductBySupervisor(
     id: string,
     supervisorId: string,
-    notes?: string
+    notes?: string,
+    barcode?: string
   ): Promise<TemporaryProduct> {
     const temporaryProduct = await this.findTemporaryProduct(id);
 
@@ -495,17 +496,43 @@ export class ProductsService {
       );
     }
 
-    // Verificar que el producto real fue creado
-    // TODO: Descomentar después de ejecutar la migración
-    // if (!temporaryProduct.productId) {
-    //   console.error('❌ No product ID found in temporary product. This should not happen.');
-    //   throw new NotFoundException(
-    //     `El producto temporal no tiene un producto real asociado. Por favor, contacte al administrador.`,
-    //   );
-    // }
+    console.log('📦 Completing temporary product by supervisor:', {
+      id,
+      name: temporaryProduct.name,
+      providedBarcode: barcode,
+      existingBarcode: temporaryProduct.barcode,
+    });
 
-    // console.log('✅ Supervisor confirming product was applied. Product ID:', temporaryProduct.productId);
-    console.log("✅ Supervisor confirming product was applied.");
+    // Si se proporciona un barcode, actualizar el campo barcode del producto temporal
+    if (barcode && barcode.trim()) {
+      console.log('🔍 Updating barcode from', temporaryProduct.barcode, 'to', barcode.trim());
+      temporaryProduct.barcode = barcode.trim();
+    }
+
+    // Crear automáticamente el producto en la tabla products usando los datos del temporary product
+    console.log('🚀 Auto-registering product in products table...');
+
+    const newProduct = this.productsRepository.create({
+      description: temporaryProduct.name, // El nombre del temporal es la descripción del producto
+      barcode: temporaryProduct.barcode || '', // Usar el barcode actualizado o vacío si no hay
+      precioA: temporaryProduct.precioA || 0,
+      precioB: temporaryProduct.precioB || 0,
+      precioC: temporaryProduct.precioC || 0,
+      costo: temporaryProduct.costo || 0,
+      iva: temporaryProduct.iva || 0,
+      isActive: true,
+    });
+
+    const savedRealProduct = await this.productsRepository.save(newProduct);
+
+    console.log('✅ Product auto-registered successfully:', {
+      productId: savedRealProduct.id,
+      description: savedRealProduct.description,
+      barcode: savedRealProduct.barcode,
+    });
+
+    // Guardar el productId en el producto temporal
+    temporaryProduct.productId = savedRealProduct.id;
 
     // Marcar como completado por supervisor
     temporaryProduct.status = TemporaryProductStatus.COMPLETED;

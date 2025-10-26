@@ -160,14 +160,21 @@ export class ProductsController {
   @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
   completeTemporaryProductBySupervisor(
     @Param("id") id: string,
-    @Body() body: { notes?: string },
+    @Body() body: { notes?: string; barcode?: string },
     @Request() req: any,
   ) {
     const supervisorId = req.user.userId;
+    console.log('🔍 Complete temporary product by supervisor:', {
+      id,
+      supervisorId,
+      notes: body.notes,
+      barcode: body.barcode,
+    });
     return this.productsService.completeTemporaryProductBySupervisor(
       id,
       supervisorId,
       body.notes,
+      body.barcode,
     );
   }
 
