@@ -6,11 +6,12 @@ export class CreateProductDto {
   @IsNotEmpty()
   description: string;
 
+  // Barcode - opcional (puede ser agregado después por supervisor)
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  barcode: string;
+  barcode?: string;
 
-  // Precio A - obligatorio
+  // Precio A - obligatorio (precio público)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Type(() => Number)
@@ -37,11 +38,10 @@ export class CreateProductDto {
   @Type(() => Number)
   costo?: number;
 
-  // IVA - porcentaje
-  @IsOptional()
+  // IVA - porcentaje (obligatorio)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(100)
   @Type(() => Number)
-  iva?: number;
+  iva: number;
 }

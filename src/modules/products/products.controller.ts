@@ -31,6 +31,20 @@ export class ProductsController {
     return this.productsService.create(createProductDto);
   }
 
+  @Post('with-supervisor-task')
+  @Roles(UserRole.ADMIN)
+  createWithSupervisorTask(
+    @Body() createProductDto: CreateProductDto,
+    @Request() req: any,
+  ) {
+    const adminId = req.user.userId;
+    console.log('🎯 POST /products/with-supervisor-task called by admin:', adminId);
+    return this.productsService.createProductWithSupervisorTask(
+      createProductDto,
+      adminId,
+    );
+  }
+
   @Get()
   // Los empleados, supervisores y administradores pueden ver productos
   findAll(

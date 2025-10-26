@@ -8,7 +8,7 @@ export class Product {
   @Column()
   description: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: true })
   barcode: string;
 
   @Column({ default: true })

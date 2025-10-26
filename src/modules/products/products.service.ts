@@ -41,6 +41,101 @@ export class ProductsService {
     return this.productsRepository.save(product);
   }
 
+  /**
+   * Create product from admin with supervisor task
+   * Creates a product and a temporary_product task for supervisor review
+   */
+  async createProductWithSupervisorTask(
+    createProductDto: CreateProductDto,
+    adminId: string
+  ): Promise<{ product: Product; temporaryProduct: TemporaryProduct }> {
+    console.log('🎯 Creating product with supervisor task:', {
+      description: createProductDto.description,
+      hasBarcode: !!createProductDto.barcode,
+      adminId,
+    });
+
+    // 1. Create the product in products table
+    const product = this.productsRepository.create({
+      ...createProductDto,
+      barcode: createProductDto.barcode || null, // null if not provided
+      isActive: true,
+    });
+    const savedProduct = await this.productsRepository.save(product);
+
+    console.log('✅ Product created:', savedProduct.id);
+
+    // 2. Create temporary_product for supervisor review
+    const temporaryProduct = this.temporaryProductsRepository.create({
+      name: savedProduct.description,
+      description: savedProduct.description,
+      barcode: savedProduct.barcode,
+      precioA: savedProduct.precioA,
+      precioB: savedProduct.precioB,
+      precioC: savedProduct.precioC,
+      costo: savedProduct.costo,
+      iva: savedProduct.iva,
+      productId: savedProduct.id, // Link to the created product
+      status: TemporaryProductStatus.PENDING_SUPERVISOR,
+      createdBy: adminId,
+      completedByAdmin: adminId, // Admin created it
+      completedByAdminAt: new Date(),
+      isActive: true,
+    });
+
+    const savedTemporaryProduct = await this.temporaryProductsRepository.save(
+      temporaryProduct
+    );
+
+    console.log('✅ Temporary product created for supervisor:', savedTemporaryProduct.id);
+
+    // 3. Notify all supervisors
+    const supervisors = await this.usersRepository.find({
+      where: { role: UserRole.SUPERVISOR, isActive: true },
+    });
+
+    console.log(`📣 Notifying ${supervisors.length} supervisors`);
+
+    // Build detailed message
+    const hasBarcode = savedProduct.barcode && savedProduct.barcode.trim();
+    const barcodeMessage = hasBarcode
+      ? `Código de barras: ${savedProduct.barcode}`
+      : '⚠️ Sin código de barras - Debe agregarlo';
+
+    const detailedMessage = `Se creó un nuevo producto "${savedProduct.description}".\n\n` +
+      `${barcodeMessage}\n` +
+      `Precio A: $${Number(savedProduct.precioA).toFixed(2)}\n` +
+      `IVA: ${savedProduct.iva}%\n\n` +
+      `Por favor, revise el producto${!hasBarcode ? ' y agregue el código de barras' : ''}.`;
+
+    const notificationPromises = supervisors.map((supervisor) =>
+      this.notificationsService.createNotification(
+        supervisor.id,
+        'Nuevo producto creado - Requiere revisión',
+        detailedMessage,
+        NotificationType.TEMPORARY_PRODUCT_PENDING_SUPERVISOR,
+        undefined,
+        undefined,
+        savedTemporaryProduct.id
+      )
+    );
+
+    await Promise.all(notificationPromises);
+
+    console.log('✅ Notifications sent to all supervisors');
+
+    // Reload with relations
+    const reloadedTemporaryProduct = await this.temporaryProductsRepository.findOne({
+      where: { id: savedTemporaryProduct.id },
+      relations: ['completedByAdminUser', 'completedBySupervisorUser'],
+    });
+
+    return {
+      product: savedProduct,
+      temporaryProduct: reloadedTemporaryProduct,
+    };
+  }
+
   async findAll(
     search?: string,
     page?: number,
