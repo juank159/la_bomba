@@ -78,6 +78,21 @@ export class OrdersService {
       throw new ForbiddenException('Only admins can change order status');
     }
 
+    // Validate supplier assignment for mixed orders when completing
+    if (updateOrderDto.status === OrderStatus.COMPLETED) {
+      const isMixedOrder = !order.provider || order.provider.trim() === '';
+
+      if (isMixedOrder) {
+        const itemsWithoutSupplier = order.items.filter(item => !item.supplierId);
+
+        if (itemsWithoutSupplier.length > 0) {
+          throw new ForbiddenException(
+            `Cannot complete mixed order: ${itemsWithoutSupplier.length} product(s) without assigned supplier. All products must have a supplier assigned in mixed orders.`
+          );
+        }
+      }
+    }
+
     Object.assign(order, updateOrderDto);
     await this.ordersRepository.save(order);
 
