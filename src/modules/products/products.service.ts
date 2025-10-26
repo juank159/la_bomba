@@ -671,6 +671,137 @@ export class ProductsService {
     return savedProduct;
   }
 
+  /**
+   * Update barcode of existing product when supervisor completes task
+   * This is for when admin creates a product WITHOUT barcode
+   * and supervisor adds it during review
+   */
+  async updateProductBarcodeFromTemporary(
+    temporaryProductId: string,
+    supervisorId: string,
+    barcode: string,
+    notes?: string
+  ): Promise<{ product: Product; temporaryProduct: TemporaryProduct }> {
+    console.log('🔄 Updating product barcode from temporary:', {
+      temporaryProductId,
+      supervisorId,
+      barcode,
+    });
+
+    // 1. Find the temporary product
+    const temporaryProduct = await this.findTemporaryProduct(temporaryProductId);
+
+    // 2. Check if it has a linked real product
+    if (!temporaryProduct.productId) {
+      throw new NotFoundException(
+        'This temporary product is not linked to a real product. Use completeTemporaryProductBySupervisor instead.'
+      );
+    }
+
+    // 3. Find the real product
+    const product = await this.productsRepository.findOne({
+      where: { id: temporaryProduct.productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(
+        `Product with ID ${temporaryProduct.productId} not found`
+      );
+    }
+
+    console.log('📦 Found product to update:', {
+      id: product.id,
+      description: product.description,
+      currentBarcode: product.barcode,
+      newBarcode: barcode,
+    });
+
+    // 4. Update the product's barcode
+    product.barcode = barcode.trim();
+    const updatedProduct = await this.productsRepository.save(product);
+
+    console.log('✅ Product barcode updated successfully');
+
+    // 5. Mark temporary product as completed by supervisor
+    temporaryProduct.status = TemporaryProductStatus.COMPLETED;
+    temporaryProduct.completedBySupervisor = supervisorId;
+    temporaryProduct.completedBySupervisorAt = new Date();
+    temporaryProduct.barcode = barcode.trim(); // Update barcode in temporary too
+
+    // Add notes if provided
+    if (notes && notes.trim()) {
+      temporaryProduct.notes = temporaryProduct.notes
+        ? `${temporaryProduct.notes}\n\nNota del supervisor: ${notes}`
+        : `Nota del supervisor: ${notes}`;
+    }
+
+    await this.temporaryProductsRepository.save(temporaryProduct);
+
+    // 6. Reload both with relations
+    const savedTemporary = await this.temporaryProductsRepository.findOne({
+      where: { id: temporaryProduct.id },
+      relations: ['completedByAdminUser', 'completedBySupervisorUser'],
+    });
+
+    console.log('✅ Temporary product completed:', {
+      id: savedTemporary.id,
+      name: savedTemporary.name,
+      productId: savedTemporary.productId,
+    });
+
+    // 7. Notify the admin who created it
+    await this.notificationsService.createNotification(
+      temporaryProduct.createdBy,
+      "Código de Barras Agregado",
+      `El supervisor agregó el código de barras "${barcode}" al producto "${product.description}".`,
+      NotificationType.TEMPORARY_PRODUCT_COMPLETED,
+      product.id,
+      undefined,
+      savedTemporary.id
+    );
+
+    return { product: updatedProduct, temporaryProduct: savedTemporary };
+  }
+
+  /**
+   * Update barcode of an existing product (for products table, not temporary_products)
+   * This is used when admin creates a product directly in products table WITHOUT barcode
+   * and supervisor adds it when completing the task
+   */
+  async updateProductBarcode(
+    productId: string,
+    barcode: string,
+  ): Promise<Product> {
+    console.log('🔄 Updating product barcode directly in products table:', {
+      productId,
+      barcode,
+    });
+
+    // Find the product in products table
+    const product = await this.productsRepository.findOne({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${productId} not found`);
+    }
+
+    console.log('📦 Found product to update:', {
+      id: product.id,
+      description: product.description,
+      currentBarcode: product.barcode,
+      newBarcode: barcode,
+    });
+
+    // Update the product's barcode
+    product.barcode = barcode.trim();
+    const updatedProduct = await this.productsRepository.save(product);
+
+    console.log('✅ Product barcode updated successfully in products table');
+
+    return updatedProduct;
+  }
+
   async deleteTemporaryProduct(id: string): Promise<void> {
     const result = await this.temporaryProductsRepository.delete(id);
     if (result.affected === 0) {

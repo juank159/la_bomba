@@ -116,6 +116,17 @@ export class ProductsController {
     return this.productsService.update(id, updateProductDto, req.user?.userId);
   }
 
+  @Patch("by-id/:id/barcode")
+  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  updateProductBarcode(
+    @Param("id") productId: string,
+    @Body("barcode") barcode: string,
+  ) {
+    console.log('🔄 PATCH /products/by-id/' + productId + '/barcode called');
+    console.log('📦 Barcode to update:', barcode);
+    return this.productsService.updateProductBarcode(productId, barcode);
+  }
+
   @Delete("by-id/:id")
   @Roles(UserRole.ADMIN)
   remove(@Param("id") id: string) {
@@ -189,6 +200,28 @@ export class ProductsController {
       supervisorId,
       body.notes,
       body.barcode,
+    );
+  }
+
+  @Post("temporary/:id/update-barcode")
+  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  updateProductBarcodeFromTemporary(
+    @Param("id") temporaryProductId: string,
+    @Body() body: { barcode: string; notes?: string },
+    @Request() req: any,
+  ) {
+    const supervisorId = req.user.userId;
+    console.log('🔍 Update product barcode from temporary:', {
+      temporaryProductId,
+      supervisorId,
+      barcode: body.barcode,
+      notes: body.notes,
+    });
+    return this.productsService.updateProductBarcodeFromTemporary(
+      temporaryProductId,
+      supervisorId,
+      body.barcode,
+      body.notes,
     );
   }
 
