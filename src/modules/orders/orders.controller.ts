@@ -62,7 +62,7 @@ export class OrdersController {
   updateOrderItemQuantity(
     @Param('id') orderId: string,
     @Param('itemId') itemId: string,
-    @Body() updateDto: { existingQuantity?: number; requestedQuantity?: number; measurementUnit?: string },
+    @Body() updateDto: { existingQuantity?: number; requestedQuantity?: number; measurementUnit?: string; supplierId?: string },
     @Request() req
   ) {
     return this.ordersService.updateOrderItemQuantity(orderId, itemId, updateDto, req.user.role, req.user.userId);

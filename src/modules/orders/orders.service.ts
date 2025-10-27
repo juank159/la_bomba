@@ -202,7 +202,7 @@ export class OrdersService {
   async updateOrderItemQuantity(
     orderId: string,
     itemId: string,
-    updateDto: { existingQuantity?: number; requestedQuantity?: number; measurementUnit?: string },
+    updateDto: { existingQuantity?: number; requestedQuantity?: number; measurementUnit?: string; supplierId?: string },
     userRole: UserRole,
     userId?: string
   ): Promise<Order> {
@@ -231,6 +231,13 @@ export class OrdersService {
     }
     if (updateDto.measurementUnit !== undefined) {
       orderItem.measurementUnit = updateDto.measurementUnit as MeasurementUnit;
+    }
+    if (updateDto.supplierId !== undefined) {
+      // Only admins can assign suppliers
+      if (userRole !== UserRole.ADMIN) {
+        throw new ForbiddenException('Only admins can assign suppliers');
+      }
+      orderItem.supplierId = updateDto.supplierId;
     }
 
     await this.orderItemsRepository.save(orderItem);
