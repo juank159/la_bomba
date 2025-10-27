@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Credit, CreditStatus } from './entities/credit.entity';
@@ -8,6 +8,7 @@ import { Client } from '../clients/entities/client.entity';
 import { CreateCreditDto } from './dto/create-credit.dto';
 import { UpdateCreditDto } from './dto/update-credit.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ClientBalanceService } from './client-balance.service';
 
 @Injectable()
 export class CreditsService {
@@ -20,6 +21,8 @@ export class CreditsService {
     private transactionsRepository: Repository<CreditTransaction>,
     @InjectRepository(Client)
     private clientsRepository: Repository<Client>,
+    @Inject(forwardRef(() => ClientBalanceService))
+    private clientBalanceService: ClientBalanceService,
   ) {}
 
   async create(createCreditDto: CreateCreditDto, username: string): Promise<Credit> {
@@ -169,12 +172,31 @@ export class CreditsService {
       throw new NotFoundException(`Credit with ID ${creditId} not found`);
     }
 
-    const remainingAmount = credit.totalAmount - credit.paidAmount;
+    const remainingAmount = Number(credit.totalAmount) - Number(credit.paidAmount);
+    const paymentAmount = Number(createPaymentDto.amount);
 
-    if (createPaymentDto.amount > remainingAmount) {
-      throw new BadRequestException('Payment amount exceeds remaining balance');
+    // Validar que el monto del pago sea mayor a cero
+    if (paymentAmount <= 0) {
+      throw new BadRequestException('El monto del pago debe ser mayor a cero');
     }
 
+    // 💡 MANEJO DE SOBREPAGOS
+    // Si el pago excede el saldo pendiente, lo permitimos y creamos saldo a favor
+    let overpaymentAmount = 0;
+    let effectivePaymentAmount = paymentAmount;
+
+    if (paymentAmount > remainingAmount) {
+      // Hay sobrepago
+      overpaymentAmount = paymentAmount - remainingAmount;
+      effectivePaymentAmount = remainingAmount;
+
+      console.log(`💰 [Credits] Sobrepago detectado:
+        - Saldo pendiente: $${remainingAmount}
+        - Pago recibido: $${paymentAmount}
+        - Exceso (saldo a favor): $${overpaymentAmount}`);
+    }
+
+    // Registrar el pago completo (incluyendo el sobrepago)
     const payment = this.paymentsRepository.create({
       ...createPaymentDto,
       creditId,
@@ -183,14 +205,14 @@ export class CreditsService {
 
     await this.paymentsRepository.save(payment);
 
-    // Calcular el nuevo saldo pendiente después del pago
-    const newRemainingBalance = remainingAmount - createPaymentDto.amount;
+    // Calcular el nuevo saldo pendiente después del pago efectivo
+    const newRemainingBalance = remainingAmount - effectivePaymentAmount;
 
     // Register transaction con el saldo después del pago
     const transaction = this.transactionsRepository.create({
       creditId: creditId,
       type: TransactionType.PAYMENT,
-      amount: createPaymentDto.amount,
+      amount: paymentAmount, // Registramos el monto total pagado
       description: createPaymentDto.description || 'Pago',
       createdBy: username,
       balanceAfter: newRemainingBalance, // Saldo pendiente después del pago
@@ -219,6 +241,19 @@ export class CreditsService {
       })
       .where('id = :id', { id: creditId })
       .execute();
+
+    // 💰 Si hay sobrepago, depositarlo como saldo a favor del cliente
+    if (overpaymentAmount > 0) {
+      await this.clientBalanceService.depositBalance(
+        credit.clientId,
+        overpaymentAmount,
+        `Sobrepago de crédito #${creditId.substring(0, 8)}... - Exceso de pago aplicado como saldo a favor`,
+        username,
+        creditId, // Relacionar con el crédito
+      );
+
+      console.log(`✅ [Credits] Saldo a favor creado: $${overpaymentAmount} para cliente ${credit.clientId}`);
+    }
 
     return this.findOne(creditId);
   }
