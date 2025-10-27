@@ -391,7 +391,7 @@ export class ClientBalanceService {
     return {
       id: clientBalance.id,
       clientId: clientBalance.clientId,
-      clientName: clientBalance.client ? clientBalance.client.name : 'Unknown',
+      clientName: clientBalance.client ? clientBalance.client.nombre : 'Unknown',
       balance: Number(clientBalance.balance),
       transactions: clientBalance.transactions
         ? clientBalance.transactions.map((t) => ({
