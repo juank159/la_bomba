@@ -121,10 +121,13 @@ export class ProductsController {
   updateProductBarcode(
     @Param("id") productId: string,
     @Body("barcode") barcode: string,
+    @Request() req: any,
   ) {
+    const supervisorId = req.user.userId;
     console.log('🔄 PATCH /products/by-id/' + productId + '/barcode called');
     console.log('📦 Barcode to update:', barcode);
-    return this.productsService.updateProductBarcode(productId, barcode);
+    console.log('👤 Supervisor ID:', supervisorId);
+    return this.productsService.updateProductBarcode(productId, barcode, supervisorId);
   }
 
   @Delete("by-id/:id")

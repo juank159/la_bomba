@@ -178,6 +178,19 @@ export class ProductUpdateTasksService {
     return { pending, completed, total };
   }
 
+  /// Get pending tasks for a specific product
+  async getPendingTasksByProductId(productId: string): Promise<ProductUpdateTask[]> {
+    console.log('🔍 Getting pending tasks for product:', productId);
+
+    return await this.tasksRepository.find({
+      where: {
+        productId,
+        status: TaskStatus.PENDING
+      },
+      relations: ['product', 'createdBy'],
+    });
+  }
+
   /// Create task automatically when product is updated
   async createTaskForProductUpdate(
     productId: string,

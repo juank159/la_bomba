@@ -771,10 +771,12 @@ export class ProductsService {
   async updateProductBarcode(
     productId: string,
     barcode: string,
+    supervisorId: string,
   ): Promise<Product> {
     console.log('🔄 Updating product barcode directly in products table:', {
       productId,
       barcode,
+      supervisorId,
     });
 
     // Find the product in products table
@@ -798,6 +800,52 @@ export class ProductsService {
     const updatedProduct = await this.productsRepository.save(product);
 
     console.log('✅ Product barcode updated successfully in products table');
+
+    // Find temporary_product linked to this product (if exists)
+    const temporaryProduct = await this.temporaryProductsRepository.findOne({
+      where: {
+        productId: productId,
+        status: TemporaryProductStatus.PENDING_SUPERVISOR,
+      },
+    });
+
+    if (temporaryProduct) {
+      console.log('📋 Found temporary product to complete:', temporaryProduct.id);
+
+      // Mark temporary product as completed
+      temporaryProduct.status = TemporaryProductStatus.COMPLETED;
+      temporaryProduct.completedBySupervisor = supervisorId;
+      temporaryProduct.completedBySupervisorAt = new Date();
+      temporaryProduct.barcode = barcode.trim(); // Update barcode in temp product too
+
+      await this.temporaryProductsRepository.save(temporaryProduct);
+      console.log('✅ Temporary product marked as completed');
+    } else {
+      console.log('ℹ️ No temporary product found for this product');
+    }
+
+    // Find and complete all pending tasks for this product
+    const pendingTasks = await this.tasksService.getPendingTasksByProductId(productId);
+
+    if (pendingTasks && pendingTasks.length > 0) {
+      console.log(`📝 Found ${pendingTasks.length} pending task(s) to complete`);
+
+      for (const task of pendingTasks) {
+        try {
+          await this.tasksService.completeTask(
+            task.id,
+            { notes: `Código de barras agregado: ${barcode}` },
+            supervisorId,
+          );
+          console.log(`✅ Task ${task.id} completed`);
+        } catch (error) {
+          console.error(`⚠️ Failed to complete task ${task.id}:`, error);
+          // Continue with other tasks even if one fails
+        }
+      }
+    } else {
+      console.log('ℹ️ No pending tasks found for this product');
+    }
 
     return updatedProduct;
   }
