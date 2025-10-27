@@ -244,15 +244,24 @@ export class CreditsService {
 
     // 💰 Si hay sobrepago, depositarlo como saldo a favor del cliente
     if (overpaymentAmount > 0) {
-      await this.clientBalanceService.depositBalance(
-        credit.clientId,
-        overpaymentAmount,
-        `Sobrepago de crédito #${creditId.substring(0, 8)}... - Exceso de pago aplicado como saldo a favor`,
-        username,
-        creditId, // Relacionar con el crédito
-      );
+      try {
+        console.log(`💰 [Credits] Creando saldo a favor de $${overpaymentAmount} para cliente ${credit.clientId}`);
 
-      console.log(`✅ [Credits] Saldo a favor creado: $${overpaymentAmount} para cliente ${credit.clientId}`);
+        await this.clientBalanceService.depositBalance(
+          credit.clientId,
+          overpaymentAmount,
+          `Sobrepago de crédito #${creditId.substring(0, 8)}... - Exceso de pago aplicado como saldo a favor`,
+          username,
+          creditId, // Relacionar con el crédito
+        );
+
+        console.log(`✅ [Credits] Saldo a favor creado exitosamente: $${overpaymentAmount} para cliente ${credit.clientId}`);
+      } catch (balanceError) {
+        console.error(`❌ [Credits] ERROR al crear saldo a favor:`, balanceError);
+        console.error(`❌ [Credits] Cliente ID: ${credit.clientId}, Monto: ${overpaymentAmount}`);
+        // No lanzar el error para que el pago se complete, pero registrar el problema
+        // TODO: Implementar sistema de reintentos o notificaciones para saldos fallidos
+      }
     }
 
     return this.findOne(creditId);

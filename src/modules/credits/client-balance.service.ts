@@ -101,6 +101,8 @@ export class ClientBalanceService {
     relatedCreditId?: string,
     relatedOrderId?: string,
   ): Promise<ClientBalance> {
+    console.log(`📥 [ClientBalance] depositBalance iniciado para cliente ${clientId}, monto: ${amount}`);
+
     if (amount <= 0) {
       throw new BadRequestException('El monto debe ser mayor a cero');
     }
@@ -110,25 +112,32 @@ export class ClientBalanceService {
     await queryRunner.startTransaction();
 
     try {
+      console.log(`🔍 [ClientBalance] Buscando saldo existente para cliente ${clientId}`);
       // Obtener o crear saldo del cliente
       let clientBalance = await queryRunner.manager.findOne(ClientBalance, {
         where: { clientId },
       });
 
       if (!clientBalance) {
+        console.log(`➕ [ClientBalance] Creando nuevo saldo para cliente ${clientId}`);
         clientBalance = queryRunner.manager.create(ClientBalance, {
           clientId,
           balance: 0,
           createdBy: username,
         });
         await queryRunner.manager.save(ClientBalance, clientBalance);
+        console.log(`✅ [ClientBalance] Saldo creado con ID: ${clientBalance.id}`);
+      } else {
+        console.log(`✅ [ClientBalance] Saldo encontrado con ID: ${clientBalance.id}, balance actual: ${clientBalance.balance}`);
       }
 
       // Calcular nuevo saldo
       const currentBalance = Number(clientBalance.balance);
       const newBalance = currentBalance + amount;
+      console.log(`🔢 [ClientBalance] Calculando nuevo saldo: ${currentBalance} + ${amount} = ${newBalance}`);
 
       // Actualizar saldo
+      console.log(`💾 [ClientBalance] Actualizando saldo en BD...`);
       await queryRunner.manager.update(
         ClientBalance,
         { id: clientBalance.id },
@@ -137,8 +146,10 @@ export class ClientBalanceService {
           updatedBy: username,
         },
       );
+      console.log(`✅ [ClientBalance] Saldo actualizado`);
 
       // Crear transacción
+      console.log(`📝 [ClientBalance] Creando transacción...`);
       const transaction = queryRunner.manager.create(ClientBalanceTransaction, {
         clientBalanceId: clientBalance.id,
         type: BalanceTransactionType.DEPOSIT,
@@ -150,16 +161,26 @@ export class ClientBalanceService {
         createdBy: username,
       });
       await queryRunner.manager.save(ClientBalanceTransaction, transaction);
+      console.log(`✅ [ClientBalance] Transacción creada con ID: ${transaction.id}`);
 
+      console.log(`✅ [ClientBalance] Haciendo commit de transacción...`);
       await queryRunner.commitTransaction();
+      console.log(`✅ [ClientBalance] Commit exitoso`);
 
       // Recargar con relaciones
-      return this.getClientBalance(clientId);
+      console.log(`🔄 [ClientBalance] Recargando saldo con relaciones...`);
+      const reloadedBalance = await this.getClientBalance(clientId);
+      console.log(`✅ [ClientBalance] depositBalance completado exitosamente`);
+      return reloadedBalance;
     } catch (error) {
+      console.error(`❌ [ClientBalance] ERROR en depositBalance:`, error);
+      console.error(`❌ [ClientBalance] Stack:`, error.stack);
       await queryRunner.rollbackTransaction();
+      console.log(`↩️  [ClientBalance] Rollback completado`);
       throw error;
     } finally {
       await queryRunner.release();
+      console.log(`🔌 [ClientBalance] QueryRunner liberado`);
     }
   }
 
