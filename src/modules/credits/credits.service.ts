@@ -32,7 +32,13 @@ export class CreditsService {
   ) {}
 
   async create(createCreditDto: CreateCreditDto, username: string): Promise<Credit> {
-    console.log(`📝 [Credits] create iniciado para cliente ${createCreditDto.clientId}, monto: ${createCreditDto.totalAmount}, useClientBalance: ${createCreditDto.useClientBalance}`);
+    console.log(`📝 [Credits] create iniciado para cliente ${createCreditDto.clientId}, monto: ${createCreditDto.totalAmount}`);
+    console.log(`📝 [Credits] useClientBalance recibido:`, {
+      value: createCreditDto.useClientBalance,
+      type: typeof createCreditDto.useClientBalance,
+      isTrue: createCreditDto.useClientBalance === true,
+      isTruthy: !!createCreditDto.useClientBalance,
+    });
 
     // Validate that client exists
     const client = await this.clientsRepository.findOne({
@@ -81,8 +87,9 @@ export class CreditsService {
     console.log(`✅ [Credits] Transacción inicial creada`);
 
     // 💰 Si el cliente quiere usar su saldo a favor, aplicarlo automáticamente
+    console.log(`🔍 [Credits] Verificando si debe usar saldo a favor: ${!!createCreditDto.useClientBalance}`);
     if (createCreditDto.useClientBalance) {
-      console.log(`💰 [Credits] Cliente solicitó usar saldo a favor para crédito ${savedCredit.id}`);
+      console.log(`💰💰💰 [Credits] ✅ SÍ ENTRA AL BLOQUE - Cliente solicitó usar saldo a favor para crédito ${savedCredit.id}`);
 
       try {
         // Obtener el saldo actual del cliente
@@ -153,10 +160,20 @@ export class CreditsService {
           console.log(`ℹ️ [Credits] Cliente no tiene saldo a favor disponible`);
         }
       } catch (balanceError) {
-        console.error(`❌ [Credits] ERROR al aplicar saldo a favor:`, balanceError);
+        console.error(`❌❌❌ [Credits] ERROR CRÍTICO al aplicar saldo a favor:`, balanceError);
+        console.error(`❌❌❌ [Credits] Stack trace:`, balanceError.stack);
+        console.error(`❌❌❌ [Credits] Error details:`, {
+          message: balanceError.message,
+          name: balanceError.name,
+          clientId: createCreditDto.clientId,
+          creditId: savedCredit.id,
+        });
         // No lanzar el error para que el crédito se cree de todas formas
         // El saldo simplemente no se aplicará
+        // IMPORTANTE: Este error debe ser visible en los logs de producción
       }
+    } else {
+      console.log(`⚠️ [Credits] NO SE APLICARÁ saldo a favor porque useClientBalance = ${createCreditDto.useClientBalance}`);
     }
 
     // Reload with relations to ensure client is loaded
@@ -209,6 +226,100 @@ export class CreditsService {
     Object.assign(credit, updateCreditDto);
     credit.updatedBy = username;
     return this.creditsRepository.save(credit);
+  }
+
+  /**
+   * 🔧 Método auxiliar para aplicar saldo a favor manualmente a un crédito existente
+   * Útil cuando el saldo no se aplicó automáticamente al crear el crédito
+   */
+  async applyClientBalanceManually(creditId: string, username: string): Promise<Credit> {
+    console.log(`🔧 [Credits] Aplicando saldo a favor manualmente al crédito ${creditId}`);
+
+    // Obtener el crédito
+    const credit = await this.creditsRepository.findOne({
+      where: { id: creditId },
+      relations: ['payments', 'client'],
+    });
+
+    if (!credit) {
+      throw new NotFoundException(`Credit with ID ${creditId} not found`);
+    }
+
+    if (credit.status === CreditStatus.PAID) {
+      throw new BadRequestException('Este crédito ya está pagado completamente');
+    }
+
+    // Obtener el saldo actual del cliente
+    const clientBalance = await this.clientBalanceService.getClientBalance(credit.clientId);
+
+    if (!clientBalance || Number(clientBalance.balance) <= 0) {
+      throw new BadRequestException('El cliente no tiene saldo a favor disponible');
+    }
+
+    const availableBalance = Number(clientBalance.balance);
+    const remainingAmount = Number(credit.totalAmount) - Number(credit.paidAmount);
+
+    // Determinar cuánto saldo usar
+    const balanceToUse = Math.min(availableBalance, remainingAmount);
+
+    console.log(`🔧 [Credits] Saldo disponible: ${availableBalance}, Deuda pendiente: ${remainingAmount}, Usando: ${balanceToUse}`);
+
+    // Usar el saldo a favor
+    await this.clientBalanceService.useBalance(
+      {
+        clientId: credit.clientId,
+        amount: balanceToUse,
+        description: `Aplicado manualmente al crédito #${creditId.substring(0, 8)}... - ${credit.description}`,
+        relatedCreditId: creditId,
+      },
+      username,
+    );
+
+    console.log(`✅ [Credits] Saldo a favor de $${balanceToUse} usado en client_balance_transactions`);
+
+    // Crear un "pago" que represente el uso del saldo
+    const balancePayment = this.paymentsRepository.create({
+      creditId: creditId,
+      amount: balanceToUse,
+      description: `Saldo a favor aplicado manualmente`,
+      createdBy: username,
+    });
+    await this.paymentsRepository.save(balancePayment);
+
+    console.log(`✅ [Credits] Pago registrado en tabla payments`);
+
+    // Registrar transacción de pago con saldo
+    const paymentTransaction = this.transactionsRepository.create({
+      creditId: creditId,
+      type: TransactionType.PAYMENT,
+      amount: balanceToUse,
+      description: `Pago con saldo a favor (aplicado manualmente)`,
+      paymentMethodId: null,
+      createdBy: username,
+      balanceAfter: remainingAmount - balanceToUse,
+    });
+    await this.transactionsRepository.save(paymentTransaction);
+
+    console.log(`✅ [Credits] Transacción registrada en credit_transactions`);
+
+    // Actualizar el crédito
+    const newPaidAmount = Number(credit.paidAmount) + balanceToUse;
+    const newStatus = newPaidAmount >= Number(credit.totalAmount) ? CreditStatus.PAID : CreditStatus.PENDING;
+
+    await this.creditsRepository
+      .createQueryBuilder()
+      .update(Credit)
+      .set({
+        paidAmount: newPaidAmount,
+        status: newStatus,
+        updatedBy: username,
+      })
+      .where('id = :id', { id: creditId })
+      .execute();
+
+    console.log(`✅ [Credits] Crédito actualizado. Total pagado: ${newPaidAmount}, Estado: ${newStatus}`);
+
+    return this.findOne(creditId);
   }
 
   async addAmountToCredit(id: string, amount: number, description: string, username: string): Promise<Credit> {

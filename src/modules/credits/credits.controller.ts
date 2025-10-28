@@ -45,6 +45,17 @@ export class CreditsController {
     return this.creditsService.addAmountToCredit(id, addAmountDto.amount, addAmountDto.description, req.user.username);
   }
 
+  /**
+   * 🔧 Aplicar saldo a favor manualmente a un crédito existente
+   * Útil para corregir créditos donde el saldo no se aplicó automáticamente
+   *
+   * POST /credits/:id/apply-client-balance
+   */
+  @Post(':id/apply-client-balance')
+  applyClientBalanceManually(@Param('id') id: string, @Req() req: any) {
+    return this.creditsService.applyClientBalanceManually(id, req.user.username);
+  }
+
   @Post(':id/payments')
   addPayment(@Param('id') id: string, @Body() createPaymentDto: CreatePaymentDto, @Req() req: any) {
     return this.creditsService.addPayment(id, createPaymentDto, req.user.username);
