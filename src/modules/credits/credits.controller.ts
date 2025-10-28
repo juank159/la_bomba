@@ -63,4 +63,29 @@ export class CreditsController {
   // remove(@Param('id') id: string, @Req() req: any) {
   //   return this.creditsService.remove(id, req.user.username);
   // }
+
+  /**
+   * 🧪 ENDPOINT DE TESTING - Verificar notificaciones de créditos vencidos manualmente
+   * Este endpoint permite probar el sistema de notificaciones sin esperar 30 días
+   *
+   * Uso:
+   * GET /credits/test-overdue-notifications?days=1
+   *
+   * El parámetro 'days' es opcional (default: 1 día para testing)
+   *
+   * ⚠️ ELIMINAR O COMENTAR EN PRODUCCIÓN
+   */
+  // @Get('test-overdue-notifications')
+  // async testOverdueNotifications(@Req() req: any) {
+  //   console.log(`🧪 [Testing] Usuario ${req.user.username} ejecutó verificación manual de créditos vencidos`);
+  //
+  //   // Para testing, usamos 1 minuto (0.0007 días) en lugar de 30 días
+  //   await this.creditsService.checkOverdueCredits(0.0007); // 1 minuto = 1/(24*60) días
+  //
+  //   return {
+  //     message: 'Verificación de créditos vencidos ejecutada exitosamente (modo testing: 1+ minuto sin pagos)',
+  //     timestamp: new Date().toISOString(),
+  //     note: 'Revisa la campana de notificaciones en la app',
+  //   };
+  // }
 }

@@ -7,6 +7,7 @@ export enum NotificationType {
   TEMPORARY_PRODUCT_PENDING_ADMIN = 'temporary_product_pending_admin',       // Producto temporal necesita precios/IVA
   TEMPORARY_PRODUCT_PENDING_SUPERVISOR = 'temporary_product_pending_supervisor', // Producto temporal listo para revisar
   TEMPORARY_PRODUCT_COMPLETED = 'temporary_product_completed',               // Producto temporal confirmado por supervisor
+  CREDIT_OVERDUE_30_DAYS = 'credit_overdue_30_days',                        // Cliente sin pagos en 30+ días
 }
 
 @Entity('notifications')
@@ -49,6 +50,9 @@ export class Notification {
 
   @Column('uuid', { nullable: true })
   temporaryProductId: string;
+
+  @Column('uuid', { nullable: true })
+  creditId: string;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan } from 'typeorm';
 import { Credit, CreditStatus } from './entities/credit.entity';
 import { Payment } from './entities/payment.entity';
 import { CreditTransaction, TransactionType } from './entities/transaction.entity';
@@ -9,6 +9,8 @@ import { CreateCreditDto } from './dto/create-credit.dto';
 import { UpdateCreditDto } from './dto/update-credit.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ClientBalanceService } from './client-balance.service';
+import { Notification, NotificationType } from '../notifications/entities/notification.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 
 @Injectable()
 export class CreditsService {
@@ -21,6 +23,10 @@ export class CreditsService {
     private transactionsRepository: Repository<CreditTransaction>,
     @InjectRepository(Client)
     private clientsRepository: Repository<Client>,
+    @InjectRepository(Notification)
+    private notificationsRepository: Repository<Notification>,
+    @InjectRepository(User)
+    private usersRepository: Repository<User>,
     @Inject(forwardRef(() => ClientBalanceService))
     private clientBalanceService: ClientBalanceService,
   ) {}
@@ -408,5 +414,115 @@ export class CreditsService {
       .execute();
 
     return this.findOne(creditId);
+  }
+
+  /**
+   * Verifica créditos pendientes sin pagos en los últimos X días
+   * y crea notificaciones para administradores
+   * @param daysThreshold - Número de días sin pago (default: 30)
+   */
+  async checkOverdueCredits(daysThreshold: number = 30): Promise<void> {
+    const daysLabel = daysThreshold < 1 ? `${Math.round(daysThreshold * 24 * 60)} minutos` : `${daysThreshold} días`;
+    console.log(`🔍 [Credits] Verificando créditos vencidos (${daysLabel}+ sin pago)...`);
+
+    try {
+      // Buscar todos los créditos pendientes
+      const pendingCredits = await this.creditsRepository.find({
+        where: { status: CreditStatus.PENDING },
+        relations: ['client', 'payments'],
+      });
+
+      console.log(`📊 [Credits] Se encontraron ${pendingCredits.length} créditos pendientes`);
+
+      // Fecha límite: hace X días
+      const thresholdDate = new Date();
+      thresholdDate.setTime(thresholdDate.getTime() - (daysThreshold * 24 * 60 * 60 * 1000));
+
+      // Obtener todos los administradores
+      const adminUsers = await this.usersRepository.find({
+        where: { role: UserRole.ADMIN },
+      });
+
+      console.log(`👥 [Credits] Se encontraron ${adminUsers.length} administradores`);
+
+      let notificationsCreated = 0;
+
+      for (const credit of pendingCredits) {
+        // Verificar si tiene pagos
+        if (!credit.payments || credit.payments.length === 0) {
+          // No tiene pagos: verificar si el crédito fue creado hace más de X días
+          if (credit.createdAt < thresholdDate) {
+            await this.createOverdueNotifications(credit, adminUsers);
+            notificationsCreated++;
+          }
+        } else {
+          // Tiene pagos: verificar fecha del último pago
+          const lastPayment = credit.payments
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+
+          if (lastPayment.createdAt < thresholdDate) {
+            await this.createOverdueNotifications(credit, adminUsers);
+            notificationsCreated++;
+          }
+        }
+      }
+
+      console.log(`✅ [Credits] Verificación completada. ${notificationsCreated} notificaciones creadas`);
+    } catch (error) {
+      console.error('❌ [Credits] Error al verificar créditos vencidos:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Crea notificaciones de crédito vencido para los administradores
+   */
+  private async createOverdueNotifications(credit: Credit, adminUsers: User[]): Promise<void> {
+    console.log(`📢 [Credits] Creando notificaciones para crédito vencido: ${credit.id} (Cliente: ${credit.client.nombre})`);
+
+    for (const admin of adminUsers) {
+      // Verificar si ya existe una notificación no leída para este crédito y este admin
+      const existingNotification = await this.notificationsRepository.findOne({
+        where: {
+          userId: admin.id,
+          creditId: credit.id,
+          type: NotificationType.CREDIT_OVERDUE_30_DAYS,
+          isRead: false,
+        },
+      });
+
+      // Si ya existe una notificación no leída, no crear otra
+      if (existingNotification) {
+        console.log(`ℹ️ [Credits] Ya existe notificación para admin ${admin.username} sobre crédito ${credit.id}`);
+        continue;
+      }
+
+      // Calcular días sin pago
+      let daysSinceLastActivity = 0;
+      if (credit.payments && credit.payments.length > 0) {
+        const lastPayment = credit.payments
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+        daysSinceLastActivity = Math.floor(
+          (new Date().getTime() - lastPayment.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+        );
+      } else {
+        daysSinceLastActivity = Math.floor(
+          (new Date().getTime() - credit.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+        );
+      }
+
+      // Crear la notificación
+      const notification = this.notificationsRepository.create({
+        type: NotificationType.CREDIT_OVERDUE_30_DAYS,
+        title: 'Crédito sin pagos por más de 30 días',
+        message: `El cliente ${credit.client.nombre} no ha realizado pagos en ${daysSinceLastActivity} días. Saldo pendiente: $${credit.remainingAmount.toLocaleString('es-CO')}`,
+        userId: admin.id,
+        creditId: credit.id,
+        isRead: false,
+      });
+
+      await this.notificationsRepository.save(notification);
+      console.log(`✅ [Credits] Notificación creada para admin ${admin.username}`);
+    }
   }
 }
