@@ -22,18 +22,18 @@ export class PaymentMethod {
   @Column({ type: 'varchar', length: 50, nullable: true })
   icon: string; // Nombre del icono (ej: 'cash', 'credit_card', 'bank_transfer')
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ type: 'varchar', length: 100 })
+  @Column({ name: 'created_by', type: 'varchar', length: 100 })
   createdBy: string;
 
-  @Column({ type: 'varchar', length: 100, nullable: true })
+  @Column({ name: 'updated_by', type: 'varchar', length: 100, nullable: true })
   updatedBy: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }
