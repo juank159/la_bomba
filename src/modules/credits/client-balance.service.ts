@@ -255,7 +255,7 @@ export class ClientBalanceService {
    * Devolver saldo al cliente (reembolso)
    */
   async refundBalance(refundBalanceDto: RefundBalanceDto, username: string): Promise<ClientBalance> {
-    const { clientId, amount, description } = refundBalanceDto;
+    const { clientId, amount, description, paymentMethodId } = refundBalanceDto;
 
     if (amount <= 0) {
       throw new BadRequestException('El monto debe ser mayor a cero');
@@ -301,6 +301,7 @@ export class ClientBalanceService {
         amount,
         description,
         balanceAfter: newBalance,
+        paymentMethodId,
         createdBy: username,
       });
       await queryRunner.manager.save(ClientBalanceTransaction, transaction);

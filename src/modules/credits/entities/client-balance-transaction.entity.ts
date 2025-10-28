@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { ClientBalance } from './client-balance.entity';
 import { Credit } from './credit.entity';
+import { PaymentMethod } from './payment-method.entity';
 
 export enum BalanceTransactionType {
   DEPOSIT = 'deposit',       // Dinero agregado al saldo (sobrepago, depósito directo)
@@ -65,6 +66,14 @@ export class ClientBalanceTransaction {
 
   @Column({ nullable: true, name: 'related_order_id' })
   relatedOrderId?: string;
+
+  // Payment method (for refunds)
+  @Column({ nullable: true, name: 'payment_method_id' })
+  paymentMethodId?: string;
+
+  @ManyToOne(() => PaymentMethod, { nullable: true, eager: true })
+  @JoinColumn({ name: 'payment_method_id' })
+  paymentMethod?: PaymentMethod;
 
   // Traceability
   @Column({ name: 'created_by' })

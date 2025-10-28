@@ -1,4 +1,4 @@
-import { IsNumber, IsString, IsUUID, Min } from 'class-validator';
+import { IsNumber, IsString, IsUUID, Min, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RefundBalanceDto {
@@ -24,4 +24,13 @@ export class RefundBalanceDto {
   })
   @IsString()
   description: string;
+
+  @ApiProperty({
+    description: 'ID del método de pago utilizado para la devolución',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    required: false,
+  })
+  @IsUUID()
+  @IsOptional()
+  paymentMethodId?: string;
 }
