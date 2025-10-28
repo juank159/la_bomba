@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Credit } from './credit.entity';
+import { PaymentMethod } from './payment-method.entity';
 
 export enum TransactionType {
   CHARGE = 'charge',                 // Cargo inicial del crédito
@@ -31,6 +32,14 @@ export class CreditTransaction {
 
   @Column({ type: 'text', nullable: true })
   description: string;
+
+  // Relation with PaymentMethod (only for payments)
+  @ManyToOne(() => PaymentMethod, { nullable: true, eager: true })
+  @JoinColumn({ name: 'payment_method_id' })
+  paymentMethod: PaymentMethod;
+
+  @Column({ name: 'payment_method_id', nullable: true })
+  paymentMethodId: string;
 
   // Balance after this transaction (saldo pendiente después de esta transacción)
   @Column({ name: 'balance_after', type: 'decimal', precision: 10, scale: 2, nullable: true })

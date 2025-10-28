@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional, IsUUID } from 'class-validator';
 
 export class CreatePaymentDto {
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -8,4 +8,8 @@ export class CreatePaymentDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsUUID()
+  @IsOptional()
+  paymentMethodId?: string;
 }

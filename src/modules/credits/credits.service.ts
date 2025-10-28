@@ -299,6 +299,7 @@ export class CreditsService {
       type: TransactionType.PAYMENT,
       amount: paymentAmount, // Registramos el monto total pagado
       description: createPaymentDto.description || 'Pago',
+      paymentMethodId: createPaymentDto.paymentMethodId,
       createdBy: username,
       balanceAfter: newRemainingBalance, // Saldo pendiente después del pago
     });
