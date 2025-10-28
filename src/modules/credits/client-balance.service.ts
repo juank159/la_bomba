@@ -407,6 +407,17 @@ export class ClientBalanceService {
   }
 
   /**
+   * Obtener todas las devoluciones (refunds) de todos los clientes
+   */
+  async getAllRefunds(): Promise<ClientBalanceTransaction[]> {
+    return this.transactionsRepository.find({
+      where: { type: BalanceTransactionType.REFUND },
+      relations: ['clientBalance', 'clientBalance.client', 'paymentMethod'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
    * Convertir entidad a DTO de respuesta
    */
   toResponseDto(clientBalance: ClientBalance): ClientBalanceResponseDto {

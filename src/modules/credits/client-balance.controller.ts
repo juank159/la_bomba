@@ -62,6 +62,31 @@ export class ClientBalanceController {
     }));
   }
 
+  @Get('refunds/all')
+  @ApiOperation({ summary: 'Obtener historial de todas las devoluciones realizadas' })
+  @ApiResponse({ status: 200, description: 'Historial completo de devoluciones' })
+  async getAllRefunds() {
+    const refunds = await this.clientBalanceService.getAllRefunds();
+    return refunds.map((t) => ({
+      id: t.id,
+      type: t.type,
+      amount: Number(t.amount),
+      description: t.description,
+      balanceAfter: Number(t.balanceAfter),
+      paymentMethodId: t.paymentMethodId,
+      paymentMethod: t.paymentMethod ? {
+        id: t.paymentMethod.id,
+        name: t.paymentMethod.name,
+        icon: t.paymentMethod.icon,
+      } : null,
+      clientId: t.clientBalance?.clientId,
+      clientName: t.clientBalance?.client?.nombre || 'Desconocido',
+      clientPhone: t.clientBalance?.client?.telefono,
+      createdBy: t.createdBy,
+      createdAt: t.createdAt,
+    }));
+  }
+
   @Post('use')
   @ApiOperation({ summary: 'Usar saldo del cliente para pagar crédito u orden' })
   @ApiResponse({ status: 200, description: 'Saldo actualizado', type: ClientBalanceResponseDto })
