@@ -122,7 +122,7 @@ export class CreditsService {
             const balancePayment = this.paymentsRepository.create({
               creditId: savedCredit.id,
               amount: balanceToUse,
-              description: `Saldo a favor aplicado automáticamente`,
+              description: `Abono de saldo a favor`,
               createdBy: username,
             });
             await this.paymentsRepository.save(balancePayment);
@@ -132,7 +132,7 @@ export class CreditsService {
               creditId: savedCredit.id,
               type: TransactionType.PAYMENT,
               amount: balanceToUse,
-              description: `Pago con saldo a favor`,
+              description: `Abono de saldo a favor`,
               paymentMethodId: null, // No aplica método de pago para saldo a favor
               createdBy: username,
               balanceAfter: remainingAmount - balanceToUse,
@@ -281,7 +281,7 @@ export class CreditsService {
     const balancePayment = this.paymentsRepository.create({
       creditId: creditId,
       amount: balanceToUse,
-      description: `Saldo a favor aplicado manualmente`,
+      description: `Abono de saldo a favor`,
       createdBy: username,
     });
     await this.paymentsRepository.save(balancePayment);
@@ -293,7 +293,7 @@ export class CreditsService {
       creditId: creditId,
       type: TransactionType.PAYMENT,
       amount: balanceToUse,
-      description: `Pago con saldo a favor (aplicado manualmente)`,
+      description: `Abono de saldo a favor`,
       paymentMethodId: null,
       createdBy: username,
       balanceAfter: remainingAmount - balanceToUse,
