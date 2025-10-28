@@ -21,7 +21,7 @@ export class PaymentMethodService {
     const query = this.paymentMethodRepository.createQueryBuilder('pm');
 
     if (!includeInactive) {
-      query.where('pm.isActive = :isActive', { isActive: true });
+      query.where('pm.is_active = :isActive', { isActive: true });
     }
 
     return query.orderBy('pm.name', 'ASC').getMany();
