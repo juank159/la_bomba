@@ -67,6 +67,7 @@ export class CreditsService {
       type: TransactionType.CHARGE,
       amount: createCreditDto.totalAmount,
       description: createCreditDto.description,
+      paymentMethodId: null, // No aplica para cargos iniciales
       createdBy: username,
       balanceAfter: createCreditDto.totalAmount,
     });
@@ -119,6 +120,7 @@ export class CreditsService {
               type: TransactionType.PAYMENT,
               amount: balanceToUse,
               description: `Pago con saldo a favor`,
+              paymentMethodId: null, // No aplica método de pago para saldo a favor
               createdBy: username,
               balanceAfter: remainingAmount - balanceToUse,
             });
@@ -229,6 +231,7 @@ export class CreditsService {
       type: TransactionType.DEBT_INCREASE,
       amount: amount,
       description: description,
+      paymentMethodId: null, // No aplica para aumentos de deuda
       createdBy: username,
       balanceAfter: newRemainingAmount, // Saldo pendiente después de aumentar la deuda
     });

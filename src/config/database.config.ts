@@ -70,7 +70,7 @@ export const createDatabaseConfig = (
       password: parsedUrl.password,
       database: parsedUrl.pathname.replace("/", ""),
       entities: [__dirname + "/../**/*.entity{.ts,.js}"],
-      synchronize: environment !== "production",
+      synchronize: true, // TEMPORALMENTE habilitado para agregar columna payment_method_id
       logging: environment === "development",
       ssl: {
         rejectUnauthorized: false,
@@ -90,7 +90,7 @@ export const createDatabaseConfig = (
     password: configService.get<string>("database.password"),
     database: configService.get<string>("database.name"),
     entities: [__dirname + "/../**/*.entity{.ts,.js}"],
-    synchronize: environment !== "production",
+    synchronize: true, // TEMPORALMENTE habilitado para agregar columna payment_method_id
     logging: environment === "development",
     ssl: environment === "production" ? { rejectUnauthorized: false } : false,
     extra: {
@@ -108,7 +108,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   password: process.env.DB_PASSWORD || "password",
   database: process.env.DB_NAME || "pedidos_db",
   entities: [__dirname + "/../**/*.entity{.ts,.js}"],
-  synchronize: process.env.NODE_ENV !== "production",
+  synchronize: true, // TEMPORALMENTE habilitado para agregar columna payment_method_id
   logging: process.env.NODE_ENV === "development",
   ssl:
     process.env.NODE_ENV === "production"
