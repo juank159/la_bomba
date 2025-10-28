@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsPositive, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsPositive, IsUUID, IsBoolean, IsOptional } from 'class-validator';
 
 export class CreateCreditDto {
   @IsUUID()
@@ -12,4 +12,8 @@ export class CreateCreditDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   totalAmount: number;
+
+  @IsBoolean()
+  @IsOptional()
+  useClientBalance?: boolean;
 }
