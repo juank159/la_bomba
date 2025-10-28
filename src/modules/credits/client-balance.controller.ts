@@ -81,7 +81,7 @@ export class ClientBalanceController {
       } : null,
       clientId: t.clientBalance?.clientId,
       clientName: t.clientBalance?.client?.nombre || 'Desconocido',
-      clientPhone: t.clientBalance?.client?.telefono,
+      clientPhone: t.clientBalance?.client?.celular,
       createdBy: t.createdBy,
       createdAt: t.createdAt,
     }));
