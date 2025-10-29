@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class EnableUnaccent$(date +%s) implements MigrationInterface {
+export class EnableUnaccent1761716834 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Habilitar la extensión unaccent para búsquedas insensibles a acentos
         await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS unaccent`);
