@@ -387,19 +387,23 @@ export class ProductsService {
       return this.findAll();
     }
 
-    const searchTerm = `%${query.trim()}%`;
+    const searchTerm = query.trim();
     console.log("Searching with term:", searchTerm);
 
     try {
-      const result = await this.productsRepository.find({
-        where: [
-          { description: ILike(searchTerm), isActive: true },
-          { barcode: ILike(searchTerm), isActive: true },
-        ],
-        order: { createdAt: "DESC" },
-        skip: page * limit,
-        take: limit,
-      });
+      // Búsqueda insensible a mayúsculas y acentos usando unaccent
+      const result = await this.productsRepository
+        .createQueryBuilder('product')
+        .where('product.isActive = :isActive', { isActive: true })
+        .andWhere(
+          '(unaccent(LOWER(product.description)) LIKE unaccent(LOWER(:searchTerm)) OR unaccent(LOWER(product.barcode)) LIKE unaccent(LOWER(:searchTerm)))',
+          { searchTerm: `%${searchTerm}%` }
+        )
+        .orderBy('product.createdAt', 'DESC')
+        .skip(page * limit)
+        .take(limit)
+        .getMany();
+
       console.log("Search result count:", result.length);
       return result;
     } catch (error) {
