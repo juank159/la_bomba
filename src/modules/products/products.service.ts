@@ -391,12 +391,21 @@ export class ProductsService {
     console.log("Searching with term:", searchTerm);
 
     try {
-      // Búsqueda insensible a mayúsculas y acentos usando unaccent
+      // Búsqueda insensible a mayúsculas y acentos usando translate para remover acentos
+      // Esta solución funciona sin necesitar la extensión unaccent
       const result = await this.productsRepository
         .createQueryBuilder('product')
         .where('product.isActive = :isActive', { isActive: true })
         .andWhere(
-          '(unaccent(LOWER(product.description)) LIKE unaccent(LOWER(:searchTerm)) OR unaccent(LOWER(product.barcode)) LIKE unaccent(LOWER(:searchTerm)))',
+          `(
+            translate(LOWER(product.description), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+            LIKE
+            translate(LOWER(:searchTerm), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+            OR
+            translate(LOWER(product.barcode), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+            LIKE
+            translate(LOWER(:searchTerm), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+          )`,
           { searchTerm: `%${searchTerm}%` }
         )
         .orderBy('product.createdAt', 'DESC')
