@@ -37,6 +37,12 @@ export class AuthController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  async logout(@Request() req) {
+    return this.authService.logout(req.user.userId);
+  }
+
   /**
    * Request password reset - sends recovery code to email
    */

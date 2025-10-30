@@ -263,6 +263,23 @@ export class AuthService {
   }
 
   /**
+   * Logout user - clears FCM token
+   */
+  async logout(userId: string): Promise<{ message: string }> {
+    try {
+      // Clear FCM token to stop receiving notifications
+      await this.usersRepository.update(userId, { fcmToken: null });
+
+      this.logger.log(`User ${userId} logged out - FCM token cleared`);
+
+      return { message: 'Logged out successfully' };
+    } catch (error) {
+      this.logger.error(`Error during logout for user ${userId}:`, error);
+      throw new BadRequestException('Error al cerrar sesión');
+    }
+  }
+
+  /**
    * Generate random 6-digit code
    */
   private generateRecoveryCode(): string {
