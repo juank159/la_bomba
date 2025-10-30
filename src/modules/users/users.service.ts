@@ -19,7 +19,7 @@ export class UsersService {
   async findOne(id: string): Promise<User> {
     return this.usersRepository.findOne({
       where: { id },
-      select: ['id', 'username', 'email', 'role', 'isActive', 'createdAt'],
+      select: ['id', 'username', 'email', 'role', 'isActive', 'createdAt', 'fcmToken'],
     });
   }
 
