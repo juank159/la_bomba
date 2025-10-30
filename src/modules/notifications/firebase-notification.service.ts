@@ -88,6 +88,8 @@ export class FirebaseNotificationService implements OnModuleInit {
         return false;
       }
 
+      console.log(`📤 Preparing to send notification to user ${userId} with token: ${user.fcmToken.substring(0, 20)}...`);
+
       // Send notification
       const message: admin.messaging.Message = {
         token: user.fcmToken,
@@ -119,11 +121,15 @@ export class FirebaseNotificationService implements OnModuleInit {
         },
       };
 
-      await admin.messaging().send(message);
-      console.log(`✅ Notification sent to user ${userId}`);
+      console.log(`🔔 Sending Firebase message with channel: ${this.getChannelId(data.type)}`);
+      const response = await admin.messaging().send(message);
+      console.log(`✅ Successfully sent notification to user ${userId}, FCM response: ${response}`);
       return true;
     } catch (error) {
-      console.error(`❌ Error sending notification to user ${userId}:`, error);
+      console.error(`❌ Error sending notification to user ${userId}:`);
+      console.error(`   Error code: ${error?.code || 'unknown'}`);
+      console.error(`   Error message: ${error?.message || 'unknown'}`);
+      console.error(`   Full error:`, JSON.stringify(error, null, 2));
 
       // If token is invalid, clear it from database
       if (error.code === 'messaging/invalid-registration-token' ||
