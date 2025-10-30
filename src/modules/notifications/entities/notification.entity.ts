@@ -4,6 +4,7 @@ import { Product } from '../../products/entities/product.entity';
 
 export enum NotificationType {
   TASK_COMPLETED = 'task_completed',
+  PRODUCT_UPDATE = 'product_update',                                         // Actualización de producto que requiere revisión
   TEMPORARY_PRODUCT_PENDING_ADMIN = 'temporary_product_pending_admin',       // Producto temporal necesita precios/IVA
   TEMPORARY_PRODUCT_PENDING_SUPERVISOR = 'temporary_product_pending_supervisor', // Producto temporal listo para revisar
   TEMPORARY_PRODUCT_COMPLETED = 'temporary_product_completed',               // Producto temporal confirmado por supervisor

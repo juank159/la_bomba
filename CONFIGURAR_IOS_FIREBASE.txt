@@ -1,0 +1,292 @@
+================================================================================
+📱 CONFIGURAR FIREBASE PARA iOS (iPhone/iPad)
+================================================================================
+
+Sigue estos pasos para agregar soporte de notificaciones push en iOS:
+
+================================================================================
+PASO 1: Descargar GoogleService-Info.plist desde Firebase Console
+================================================================================
+
+1. Ve a Firebase Console:
+   https://console.firebase.google.com/
+
+2. Selecciona tu proyecto: "la-bomba-414b6"
+
+3. En la página principal, verás tus apps. Si no has agregado una app iOS:
+
+   A. Click en el ícono de iOS (el logo de Apple)
+   B. Ingresa los datos:
+      - iOS bundle ID: com.labomba.pedidos (o el que uses en tu Info.plist)
+      - App nickname: La Bomba iOS (opcional)
+      - App Store ID: (déjalo en blanco por ahora)
+   C. Click en "Registrar app"
+
+4. Si ya existe una app iOS registrada:
+
+   A. Click en el ícono de engranaje (⚙️) al lado de "Project Overview"
+   B. Click en "Configuración del proyecto" / "Project settings"
+   C. Ve a la pestaña "General"
+   D. Baja hasta "Tus apps" / "Your apps"
+   E. Busca la sección de iOS apps
+   F. Click en el botón "GoogleService-Info.plist" para descargar
+
+5. Se descargará un archivo llamado: GoogleService-Info.plist
+
+================================================================================
+PASO 2: Agregar GoogleService-Info.plist al proyecto iOS
+================================================================================
+
+Opción A: Usando Xcode (Recomendado)
+-------------------------------------
+
+1. Abre el proyecto iOS en Xcode:
+   cd /Users/mac/Documents/pedidos/frontend
+   open ios/Runner.xcworkspace
+
+   ⚠️ IMPORTANTE: Abre Runner.xcworkspace, NO Runner.xcodeproj
+
+2. En Xcode, en el navegador de archivos (lado izquierdo):
+   - Haz click derecho en la carpeta "Runner" (la que tiene el ícono azul)
+   - Selecciona "Add Files to Runner..."
+
+3. Navega hasta donde descargaste GoogleService-Info.plist
+
+4. Selecciona el archivo GoogleService-Info.plist
+
+5. Asegúrate de marcar:
+   ✅ "Copy items if needed"
+   ✅ "Add to targets" > Runner (debe estar marcado)
+
+6. Click en "Add"
+
+7. Verifica que el archivo aparezca en:
+   Runner > Runner > GoogleService-Info.plist
+
+
+Opción B: Manualmente (si no tienes Xcode)
+-------------------------------------------
+
+1. Copia el archivo descargado a la carpeta iOS:
+   cp ~/Downloads/GoogleService-Info.plist /Users/mac/Documents/pedidos/frontend/ios/Runner/
+
+2. Abre el archivo project.pbxproj:
+   /Users/mac/Documents/pedidos/frontend/ios/Runner.xcodeproj/project.pbxproj
+
+3. Este paso es más complejo, por eso se recomienda usar Xcode.
+
+================================================================================
+PASO 3: Verificar Bundle ID
+================================================================================
+
+El Bundle ID en tu proyecto debe coincidir con el de Firebase.
+
+1. Abre Xcode:
+   open /Users/mac/Documents/pedidos/frontend/ios/Runner.xcworkspace
+
+2. Selecciona "Runner" en el navegador (arriba a la izquierda)
+
+3. En la pestaña "General", busca "Bundle Identifier"
+
+4. Anota el Bundle ID (ejemplo: com.labomba.pedidos)
+
+5. Ve a Firebase Console > Project Settings > General > iOS apps
+   - Verifica que el Bundle ID coincida
+
+Si NO coinciden:
+- Opción 1: Cambia el Bundle ID en Xcode para que coincida con Firebase
+- Opción 2: Registra una nueva app iOS en Firebase con tu Bundle ID actual
+
+================================================================================
+PASO 4: Configurar permisos en Info.plist
+================================================================================
+
+1. Abre el archivo Info.plist:
+   /Users/mac/Documents/pedidos/frontend/ios/Runner/Info.plist
+
+2. Agrega estas líneas ANTES de la última etiqueta </dict>:
+
+<key>FirebaseAppDelegateProxyEnabled</key>
+<false/>
+<key>UIBackgroundModes</key>
+<array>
+    <string>fetch</string>
+    <string>remote-notification</string>
+</array>
+
+Debería verse así:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    ... (otros datos) ...
+
+    <key>FirebaseAppDelegateProxyEnabled</key>
+    <false/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>remote-notification</string>
+    </array>
+</dict>
+</plist>
+
+================================================================================
+PASO 5: Configurar AppDelegate.swift
+================================================================================
+
+1. Abre el archivo:
+   /Users/mac/Documents/pedidos/frontend/ios/Runner/AppDelegate.swift
+
+2. El archivo ya debe tener algo similar a esto (Flutter lo configura):
+
+import UIKit
+import Flutter
+
+@UIApplicationMain
+@objc class AppDelegate: FlutterAppDelegate {
+  override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+  ) -> Bool {
+    // Flutter Engine
+    GeneratedPluginRegistrant.register(with: self)
+
+    // Solicitar permisos de notificación (iOS)
+    if #available(iOS 10.0, *) {
+      UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
+    }
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+}
+
+3. Si no tiene las líneas de UNUserNotificationCenter, agrégalas.
+
+================================================================================
+PASO 6: Instalar Pods
+================================================================================
+
+1. Ve a la carpeta iOS:
+   cd /Users/mac/Documents/pedidos/frontend/ios
+
+2. Instala los pods de Firebase:
+   pod install
+
+   O si da error:
+   pod deintegrate
+   pod install
+
+3. Espera a que termine (puede tomar 2-5 minutos)
+
+4. Deberías ver:
+   ✅ Installing Firebase...
+   ✅ Installing FirebaseCore...
+   ✅ Installing FirebaseMessaging...
+
+================================================================================
+PASO 7: Limpiar y Reconstruir
+================================================================================
+
+1. Limpia el proyecto:
+   cd /Users/mac/Documents/pedidos/frontend
+   flutter clean
+
+2. Obtén las dependencias:
+   flutter pub get
+
+3. Vuelve a construir:
+   flutter run
+
+================================================================================
+PASO 8: Probar en un dispositivo iOS real
+================================================================================
+
+⚠️ IMPORTANTE: Las notificaciones push NO funcionan en el simulador de iOS.
+Necesitas un iPhone o iPad físico para probar.
+
+1. Conecta tu iPhone/iPad al Mac con un cable
+
+2. Asegúrate de que el dispositivo esté desbloqueado y confíes en la computadora
+
+3. En Xcode, selecciona tu dispositivo en lugar del simulador
+
+4. Ejecuta:
+   flutter run
+
+5. Si aparece un error de firma:
+   - Abre ios/Runner.xcworkspace en Xcode
+   - Selecciona Runner en el navegador
+   - Ve a "Signing & Capabilities"
+   - Selecciona tu equipo (Team)
+   - Marca "Automatically manage signing"
+
+================================================================================
+✅ VERIFICAR QUE TODO FUNCIONA
+================================================================================
+
+Cuando ejecutes la app en iOS, deberías ver:
+
+1. Popup pidiendo permiso para notificaciones
+2. En la consola:
+   🔥 Initializing Firebase...
+   ✅ Firebase initialized successfully
+   📱 Notification permission status: authorized
+   📲 FCM Token: [token largo para iOS]
+   💾 FCM Token saved to backend successfully
+
+================================================================================
+❌ PROBLEMAS COMUNES
+================================================================================
+
+1. ERROR: "No Firebase App '[DEFAULT]' has been created"
+   Solución: Verifica que GoogleService-Info.plist esté en ios/Runner/
+
+2. ERROR: "The bundle identifier does not match"
+   Solución: El Bundle ID en Xcode debe coincidir con Firebase
+
+3. ERROR: "CocoaPods not installed"
+   Solución: Instala CocoaPods:
+   sudo gem install cocoapods
+
+4. ERROR al hacer pod install
+   Solución:
+   cd ios
+   pod repo update
+   pod install
+
+5. Notificaciones no llegan en iOS
+   - Verifica que estés en un dispositivo REAL (no simulador)
+   - Verifica permisos en Settings > Notifications > Tu App
+   - Verifica que el token FCM sea diferente al de Android
+
+================================================================================
+📝 RESUMEN DE ARCHIVOS
+================================================================================
+
+Deberías tener estos archivos:
+
+Android:
+✅ android/app/google-services.json
+
+iOS:
+✅ ios/Runner/GoogleService-Info.plist
+✅ ios/Runner/Info.plist (con permisos configurados)
+✅ ios/Runner/AppDelegate.swift (con UNUserNotificationCenter)
+
+================================================================================
+🎯 SIGUIENTE PASO
+================================================================================
+
+Después de configurar iOS:
+
+1. Ejecuta: flutter run en un iPhone/iPad físico
+2. Acepta el permiso de notificaciones cuando aparezca
+3. Haz login en la app
+4. Verifica en Supabase que el token se guardó
+5. Envía una notificación de prueba desde el backend
+
+¡Y listo! Tu app estará recibiendo notificaciones push en iOS.
+
+================================================================================

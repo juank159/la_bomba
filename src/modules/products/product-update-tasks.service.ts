@@ -7,6 +7,8 @@ import { CompleteTaskDto } from './dto/complete-task.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { Product } from './entities/product.entity';
+import { User, UserRole } from '../users/entities/user.entity';
+import { FirebaseNotificationService, NotificationTypeEnum } from '../notifications/firebase-notification.service';
 
 @Injectable()
 export class ProductUpdateTasksService {
@@ -15,7 +17,10 @@ export class ProductUpdateTasksService {
     private tasksRepository: Repository<ProductUpdateTask>,
     @InjectRepository(Product)
     private productsRepository: Repository<Product>,
+    @InjectRepository(User)
+    private usersRepository: Repository<User>,
     private notificationsService: NotificationsService,
+    private firebaseNotificationService: FirebaseNotificationService,
   ) {}
 
   /// Create a new update task
@@ -36,6 +41,73 @@ export class ProductUpdateTasksService {
       where: { id: savedTask.id },
       relations: ['product', 'createdBy'],
     });
+
+    // Get product details for notification
+    const product = await this.productsRepository.findOne({
+      where: { id: createTaskDto.productId },
+    });
+
+    if (product) {
+      console.log('📬 Sending notifications to supervisors for task:', savedTask.id);
+
+      // Get all active supervisors
+      const supervisors = await this.usersRepository.find({
+        where: { role: UserRole.SUPERVISOR, isActive: true },
+      });
+
+      console.log(`📣 Found ${supervisors.length} supervisors to notify`);
+
+      // Build notification title and message based on change type
+      let changeTypeText = 'información';
+      let notificationType = NotificationType.PRODUCT_UPDATE;
+
+      switch (createTaskDto.changeType) {
+        case ChangeType.PRICE:
+          changeTypeText = 'precios';
+          break;
+        case ChangeType.INFO:
+          changeTypeText = 'información';
+          break;
+        case ChangeType.ARRIVAL:
+          changeTypeText = 'llegada';
+          break;
+      }
+
+      const title = `Producto actualizado: ${product.description}`;
+      const message = `Se actualizó ${changeTypeText} del producto "${product.description}". ${createTaskDto.description || ''}`.trim();
+
+      // Send push notifications to all supervisors
+      for (const supervisor of supervisors) {
+        try {
+          // Create notification in database
+          await this.notificationsService.createNotification(
+            supervisor.id,
+            title,
+            message,
+            notificationType,
+            product.id,
+            savedTask.id,
+          );
+
+          // Send Firebase push notification
+          await this.firebaseNotificationService.sendToUser(
+            supervisor.id,
+            title,
+            message,
+            {
+              type: NotificationTypeEnum.PRODUCT_UPDATE,
+              productId: product.id,
+              taskId: savedTask.id,
+            }
+          );
+
+          console.log(`✅ Notification sent to supervisor: ${supervisor.username}`);
+        } catch (error) {
+          console.error(`⚠️ Failed to send notification to supervisor ${supervisor.username}:`, error);
+          // Continue with other supervisors even if one fails
+        }
+      }
+    }
 
     return taskWithRelations;
   }

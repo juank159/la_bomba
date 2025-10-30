@@ -6,6 +6,7 @@ import { UsersService } from '../users/users.service';
 export enum NotificationTypeEnum {
   SUPERVISOR_TASK = 'SUPERVISOR_TASK',
   ADMIN_TASK = 'ADMIN_TASK',
+  PRODUCT_UPDATE = 'PRODUCT_UPDATE',
   PRODUCT_APPROVED = 'PRODUCT_APPROVED',
   CREDIT_REMINDER = 'CREDIT_REMINDER',
   ORDER_UPDATE = 'ORDER_UPDATE',
@@ -41,6 +42,12 @@ export class FirebaseNotificationService implements OnModuleInit {
 
         // Parse service account JSON
         const serviceAccountJson = JSON.parse(serviceAccount);
+
+        // Fix: Replace escaped newlines with actual newlines in private_key
+        // This is needed because environment variables escape the newlines
+        if (serviceAccountJson.private_key) {
+          serviceAccountJson.private_key = serviceAccountJson.private_key.replace(/\\n/g, '\n');
+        }
 
         // Initialize Firebase Admin
         this.firebaseApp = admin.initializeApp({
@@ -304,6 +311,8 @@ export class FirebaseNotificationService implements OnModuleInit {
         return 'supervisor_tasks';
       case NotificationTypeEnum.ADMIN_TASK:
         return 'admin_tasks';
+      case NotificationTypeEnum.PRODUCT_UPDATE:
+        return 'supervisor_tasks';  // Use same channel as supervisor tasks
       case NotificationTypeEnum.PRODUCT_APPROVED:
         return 'products';
       case NotificationTypeEnum.CREDIT_REMINDER:

@@ -4,3 +4,12 @@
 .env.production
 node_modules
 dist
+
+# Firebase credentials and secrets - NEVER COMMIT THESE
+la-bomba-*-firebase-adminsdk-*.json
+firebase-env-value*.txt
+firebase-render-value*.txt
+*COPIAR*VALOR*.txt
+*VALOR*CORRECTO*.txt
+*INSTRUCCIONES*FINALES*.txt
+*INSTRUCCIONES*MIGRACION*.txt
