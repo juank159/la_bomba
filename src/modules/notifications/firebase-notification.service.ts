@@ -109,6 +109,8 @@ export class FirebaseNotificationService implements OnModuleInit {
           notification: {
             sound: 'default',
             channelId: this.getChannelId(data.type),
+            icon: 'ic_notification',  // Small icon monocromo
+            color: '#FF5722',  // Color naranja como la bomba
           },
         },
         apns: {
