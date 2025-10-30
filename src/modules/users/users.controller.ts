@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Put, Body, UseGuards, Request } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -20,5 +20,18 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
+  }
+
+  @Put('fcm-token')
+  async updateFcmToken(@Request() req, @Body('fcmToken') fcmToken: string) {
+    const userId = req.user.userId;
+    return this.usersService.updateFcmToken(userId, fcmToken);
+  }
+
+  @Put('fcm-token/clear')
+  async clearFcmToken(@Request() req) {
+    const userId = req.user.userId;
+    await this.usersService.clearFcmToken(userId);
+    return { message: 'FCM token cleared successfully' };
   }
 }

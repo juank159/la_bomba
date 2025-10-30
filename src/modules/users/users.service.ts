@@ -26,4 +26,24 @@ export class UsersService {
   async findByUsername(username: string): Promise<User> {
     return this.usersRepository.findOne({ where: { username } });
   }
+
+  async updateFcmToken(userId: string, fcmToken: string): Promise<User> {
+    await this.usersRepository.update(userId, { fcmToken });
+    return this.findOne(userId);
+  }
+
+  async clearFcmToken(userId: string): Promise<void> {
+    await this.usersRepository.update(userId, { fcmToken: null });
+  }
+
+  async findByFcmToken(fcmToken: string): Promise<User> {
+    return this.usersRepository.findOne({ where: { fcmToken } });
+  }
+
+  async findUsersByRole(role: string): Promise<User[]> {
+    return this.usersRepository.find({
+      where: { role: role as any, isActive: true },
+      select: ['id', 'username', 'email', 'role', 'fcmToken'],
+    });
+  }
 }

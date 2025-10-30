@@ -30,6 +30,9 @@ export class User {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  fcmToken: string;
+
   @CreateDateColumn()
   createdAt: Date;
 
