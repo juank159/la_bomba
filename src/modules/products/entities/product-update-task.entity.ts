@@ -73,6 +73,9 @@ export class ProductUpdateTask {
   @Column({ nullable: true })
   completedAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, type: 'text' })
+  adminNotes: string; // Notas del administrador al crear la tarea
+
+  @Column({ nullable: true, type: 'text' })
   notes: string; // Notas del supervisor al completar
 }

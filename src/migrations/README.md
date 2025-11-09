@@ -13,6 +13,17 @@ En producción, `synchronize` está configurado como `false` por seguridad, por 
 **Fecha:** 2025-10-27
 **Descripción:** Sistema de saldo a favor de clientes (manejo de sobrepagos)
 
+### 003-add-admin-notes-to-product-update-tasks.sql
+
+**Fecha:** 2025-11-08
+**Descripción:** Agrega campo `adminNotes` para notas del administrador al crear tareas
+
+**Cambios:**
+- Agrega columna `adminNotes` TEXT a la tabla `product_update_tasks`
+- Permite que los administradores agreguen notas explicativas cuando hacen cambios a productos
+- Las notas son visibles para el supervisor al revisar la tarea
+- Diferencia entre `adminNotes` (notas al crear) y `notes` (notas al completar)
+
 **Tablas creadas:**
 - `client_balances`: Saldo actual de cada cliente
 - `client_balance_transactions`: Historial de transacciones de saldo

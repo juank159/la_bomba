@@ -20,4 +20,8 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  adminNotes?: string;
 }

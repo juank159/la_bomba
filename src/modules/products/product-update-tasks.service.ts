@@ -271,11 +271,13 @@ export class ProductUpdateTasksService {
     newValue: any,
     createdById: string,
     description?: string,
+    adminNotes?: string,
   ): Promise<ProductUpdateTask> {
-    console.log('🔄 Auto-creating task for product update:', { 
-      productId, 
-      changeType, 
-      createdById 
+    console.log('🔄 Auto-creating task for product update:', {
+      productId,
+      changeType,
+      createdById,
+      hasAdminNotes: !!adminNotes
     });
 
     const createTaskDto: CreateTaskDto = {
@@ -284,6 +286,7 @@ export class ProductUpdateTasksService {
       oldValue,
       newValue,
       description: description || `${changeType} update for product`,
+      adminNotes,
     };
 
     return await this.create(createTaskDto, createdById);

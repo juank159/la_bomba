@@ -198,7 +198,8 @@ export class ProductsService {
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
-    updatedById?: string
+    updatedById?: string,
+    adminNotes?: string
   ): Promise<Product> {
     console.log("🔄 ProductsService.update called with:", {
       id,
@@ -280,7 +281,8 @@ export class ProductsService {
           oldValues,
           updateProductDto,
           savedProduct,
-          updatedById
+          updatedById,
+          adminNotes
         );
       } catch (error) {
         console.error("⚠️ Failed to create update task:", error);
@@ -296,7 +298,8 @@ export class ProductsService {
     oldValues: any,
     updateData: UpdateProductDto,
     product: Product,
-    updatedById: string
+    updatedById: string,
+    adminNotes?: string
   ): Promise<void> {
     const priceFields = ["precioA", "precioB", "precioC", "costo"];
 
@@ -364,7 +367,8 @@ export class ProductsService {
         oldValues,
         updateData,
         updatedById,
-        description
+        description,
+        adminNotes
       );
     }
   }

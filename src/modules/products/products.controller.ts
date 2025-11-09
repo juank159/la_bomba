@@ -113,7 +113,11 @@ export class ProductsController {
     console.log("🔍 IVA value:", updateProductDto.iva);
     console.log("🔍 IVA is undefined?:", updateProductDto.iva === undefined);
 
-    return this.productsService.update(id, updateProductDto, req.user?.userId);
+    // Extract adminNotes from body if present
+    const adminNotes = req.body?.adminNotes;
+    console.log("📝 Admin notes:", adminNotes);
+
+    return this.productsService.update(id, updateProductDto, req.user?.userId, adminNotes);
   }
 
   @Patch("by-id/:id/barcode")
