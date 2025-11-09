@@ -412,32 +412,90 @@ export class ProductsService {
     console.log("Searching with term:", searchTerm);
 
     try {
-      // Búsqueda insensible a mayúsculas y acentos usando translate para remover acentos
-      // Esta solución funciona sin necesitar la extensión unaccent
-      const result = await this.productsRepository
+      // MEJORA: Dividir la búsqueda en palabras individuales
+      // Ejemplo: "CREMA NUTRIBELA" -> ["CREMA", "NUTRIBELA"]
+      // Esto permite encontrar "CREMA DE PEINAR NUTRIBELA 300ml ANTIFRIZZ"
+      // incluso si no recuerdas el nombre completo
+      const searchWords = searchTerm.split(/\s+/).filter(word => word.length > 0);
+      console.log("🔍 Buscando palabras:", searchWords);
+
+      const queryBuilder = this.productsRepository
         .createQueryBuilder('product')
-        .where('product.isActive = :isActive', { isActive: true })
-        .andWhere(
+        .where('product.isActive = :isActive', { isActive: true });
+
+      // Cada palabra debe aparecer en la descripción O en el código de barras
+      // Esto permite búsquedas parciales como:
+      // - "CREMA NUTRIBELA" encuentra "CREMA DE PEINAR NUTRIBELA"
+      // - "PEINAR 300ml" encuentra "CREMA DE PEINAR NUTRIBELA 300ml"
+      searchWords.forEach((word, index) => {
+        const paramName = `searchWord${index}`;
+        queryBuilder.andWhere(
           `(
             translate(LOWER(product.description), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
             LIKE
-            translate(LOWER(:searchTerm), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+            translate(LOWER(:${paramName}), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
             OR
             translate(LOWER(product.barcode), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
             LIKE
-            translate(LOWER(:searchTerm), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+            translate(LOWER(:${paramName}), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
           )`,
-          { searchTerm: `%${searchTerm}%` }
-        )
-        .orderBy('product.createdAt', 'DESC')
-        .skip(page * limit)
-        .take(limit)
-        .getMany();
+          { [paramName]: `%${word}%` }
+        );
+      });
 
-      console.log("Search result count:", result.length);
+      // MEJORA: Calcular score de relevancia
+      // Prioridad:
+      // 1. Código de barras exacto (1000 puntos)
+      // 2. Código de barras que empieza con la búsqueda (900 puntos)
+      // 3. Cada palabra encontrada suma puntos (primeras palabras valen más)
+      let selectScore = `
+        CASE
+          WHEN product.barcode = :exactBarcode THEN 1000
+          WHEN LOWER(product.barcode) LIKE LOWER(:firstWordExact) THEN 900
+          ELSE 0
+        END`;
+
+      // Cada palabra encontrada suma puntos (decreciente)
+      searchWords.forEach((word, index) => {
+        selectScore += ` +
+        CASE
+          WHEN translate(LOWER(product.description), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAONC')
+               LIKE translate(LOWER(:scoreWord${index}), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+          THEN ${10 - index}
+          ELSE 0
+        END`;
+      });
+
+      queryBuilder.addSelect(`(${selectScore})`, 'relevance_score');
+
+      // Parámetros para scoring
+      queryBuilder.setParameter('exactBarcode', searchTerm);
+      queryBuilder.setParameter('firstWordExact', `${searchWords[0]}%`);
+      searchWords.forEach((word, index) => {
+        queryBuilder.setParameter(`scoreWord${index}`, `%${word}%`);
+      });
+
+      // Ordenar por relevancia primero, luego por fecha
+      queryBuilder.orderBy('relevance_score', 'DESC');
+      queryBuilder.addOrderBy('product.createdAt', 'DESC');
+
+      // Paginación
+      queryBuilder.skip(page * limit);
+      queryBuilder.take(limit);
+
+      const result = await queryBuilder.getMany();
+
+      console.log("✅ Resultados encontrados:", result.length);
+      if (result.length > 0) {
+        console.log("📦 Primeros 3 resultados:", result.slice(0, 3).map(p => ({
+          description: p.description,
+          barcode: p.barcode
+        })));
+      }
+
       return result;
     } catch (error) {
-      console.error("Database search error:", error);
+      console.error("❌ Error en búsqueda:", error);
       throw error;
     }
   }
