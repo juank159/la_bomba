@@ -249,6 +249,7 @@ export class ProductsService {
       costo: product.costo,
       iva: product.iva,
       description: product.description,
+      barcode: product.barcode,
     };
 
     console.log("✏️ Updating product with data:", updateProductDto);
@@ -324,6 +325,11 @@ export class ProductsService {
     const ivaChanged =
       updateData["iva"] !== undefined && updateData["iva"] !== oldValues["iva"];
 
+    // Check for barcode change
+    const barcodeChanged =
+      updateData["barcode"] !== undefined &&
+      updateData["barcode"] !== oldValues["barcode"];
+
     // Build detailed change description
     if (priceChanges.length > 0) {
       hasChanges = true;
@@ -347,6 +353,16 @@ export class ProductsService {
       changeDetails.push(`IVA (${oldValues["iva"]}% → ${updateData["iva"]}%)`);
     }
 
+    if (barcodeChanged) {
+      hasChanges = true;
+      if (changeType !== ChangeType.PRICE) {
+        changeType = ChangeType.INFO;
+      }
+      const oldBarcode = oldValues["barcode"] || "sin código";
+      const newBarcode = updateData["barcode"] || "sin código";
+      changeDetails.push(`Código de barras (${oldBarcode} → ${newBarcode})`);
+    }
+
     if (hasChanges) {
       description = changeDetails.join(", ");
 
@@ -358,6 +374,7 @@ export class ProductsService {
           prices: priceChanges,
           descriptionChanged,
           ivaChanged,
+          barcodeChanged,
         },
       });
 
