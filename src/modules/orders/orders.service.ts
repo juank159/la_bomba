@@ -43,11 +43,95 @@ export class OrdersService {
     return this.findOne(savedOrder.id);
   }
 
-  async findAll(): Promise<Order[]> {
-    return this.ordersRepository.find({
-      relations: ['createdBy', 'items', 'items.product', 'items.temporaryProduct', 'items.supplier'],
-      order: { createdAt: 'DESC' },
+  async findAll(
+    search?: string,
+    status?: string,
+    page: number = 0,
+    limit: number = 20,
+  ): Promise<Order[]> {
+    console.log('findAll called with:', { search, status, page, limit });
+
+    // If no search query, return all orders with filters
+    if (!search || search.trim().length === 0) {
+      const queryBuilder = this.ordersRepository
+        .createQueryBuilder('order')
+        .leftJoinAndSelect('order.createdBy', 'createdBy')
+        .leftJoinAndSelect('order.items', 'items')
+        .leftJoinAndSelect('items.product', 'product')
+        .leftJoinAndSelect('items.temporaryProduct', 'temporaryProduct')
+        .leftJoinAndSelect('items.supplier', 'supplier');
+
+      if (status) {
+        queryBuilder.where('order.status = :status', { status });
+      }
+
+      queryBuilder.orderBy('order.createdAt', 'DESC');
+      queryBuilder.skip(page * limit);
+      queryBuilder.take(limit);
+
+      return queryBuilder.getMany();
+    }
+
+    // MEJORA: Búsqueda inteligente con palabras individuales
+    const stopWords = new Set([
+      'de', 'la', 'el', 'y', 'en', 'con', 'para', 'por', 'un', 'una',
+      'los', 'las', 'del', 'al', 'o', 'e', 'u', 'a'
+    ]);
+
+    const searchTerm = search.trim();
+    const allWords = searchTerm.split(/\s+/);
+    const searchWords = allWords.filter(word => {
+      const cleanWord = word.toLowerCase();
+      return word.length >= 2 && !stopWords.has(cleanWord);
     });
+
+    console.log('🔍 Palabras originales:', allWords);
+    console.log('✨ Palabras filtradas para búsqueda:', searchWords);
+
+    if (searchWords.length === 0) {
+      console.log('⚠️ No hay palabras válidas, usando término completo');
+      searchWords.push(searchTerm);
+    }
+
+    const queryBuilder = this.ordersRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.createdBy', 'createdBy')
+      .leftJoinAndSelect('order.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.temporaryProduct', 'temporaryProduct')
+      .leftJoinAndSelect('items.supplier', 'supplier');
+
+    // Construir búsqueda por palabras individuales
+    // Buscar en: description y provider
+    searchWords.forEach((word, index) => {
+      const paramName = `searchWord${index}`;
+      queryBuilder.andWhere(
+        `(
+          translate(LOWER(order.description), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+          LIKE
+          translate(LOWER(:${paramName}), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+          OR
+          translate(LOWER(order.provider), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+          LIKE
+          translate(LOWER(:${paramName}), 'áéíóúàèìòùäëïöüâêîôûãõñçÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÂÊÎÔÛÃÕÑÇ', 'aeiouaeiouaeiouaeiouaoncAEIOUAEIOUAEIOUAEIOUAONC')
+        )`,
+        { [paramName]: `%${word}%` }
+      );
+    });
+
+    // Filtrar por estado si se proporciona
+    if (status) {
+      queryBuilder.andWhere('order.status = :status', { status });
+    }
+
+    queryBuilder.orderBy('order.createdAt', 'DESC');
+    queryBuilder.skip(page * limit);
+    queryBuilder.take(limit);
+
+    const result = await queryBuilder.getMany();
+    console.log('✅ Resultados encontrados:', result.length);
+
+    return result;
   }
 
   async findOne(id: string): Promise<Order> {
