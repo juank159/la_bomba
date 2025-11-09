@@ -412,12 +412,32 @@ export class ProductsService {
     console.log("Searching with term:", searchTerm);
 
     try {
-      // MEJORA: Dividir la búsqueda en palabras individuales
-      // Ejemplo: "CREMA NUTRIBELA" -> ["CREMA", "NUTRIBELA"]
-      // Esto permite encontrar "CREMA DE PEINAR NUTRIBELA 300ml ANTIFRIZZ"
-      // incluso si no recuerdas el nombre completo
-      const searchWords = searchTerm.split(/\s+/).filter(word => word.length > 0);
-      console.log("🔍 Buscando palabras:", searchWords);
+      // MEJORA 1: Lista de stop words (palabras vacías) en español
+      // Estas palabras se ignoran porque son muy comunes y no aportan a la búsqueda
+      const stopWords = new Set([
+        'de', 'la', 'el', 'y', 'en', 'con', 'para', 'por', 'un', 'una',
+        'los', 'las', 'del', 'al', 'o', 'e', 'u', 'a'
+      ]);
+
+      // MEJORA 2: Dividir la búsqueda en palabras individuales
+      // - Filtra palabras muy cortas (menos de 2 caracteres)
+      // - Filtra stop words (palabras vacías)
+      // Ejemplo: "CREMA DE LA NUTRIBELA" -> ["CREMA", "NUTRIBELA"]
+      const allWords = searchTerm.split(/\s+/);
+      const searchWords = allWords.filter(word => {
+        const cleanWord = word.toLowerCase();
+        // Ignorar palabras de 1 carácter o stop words
+        return word.length >= 2 && !stopWords.has(cleanWord);
+      });
+
+      console.log("🔍 Palabras originales:", allWords);
+      console.log("✨ Palabras filtradas para búsqueda:", searchWords);
+
+      // Si después de filtrar no quedan palabras, usar la búsqueda original
+      if (searchWords.length === 0) {
+        console.log("⚠️ No hay palabras válidas después de filtrar, usando término completo");
+        searchWords.push(searchTerm);
+      }
 
       const queryBuilder = this.productsRepository
         .createQueryBuilder('product')
