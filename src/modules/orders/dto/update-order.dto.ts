@@ -7,8 +7,10 @@ export class UpdateOrderDto {
   @IsOptional()
   description?: string;
 
+  // IMPORTANT: provider can be null to indicate a mixed order
+  // (where each product has its own supplier assigned)
   @IsOptional()
-  provider?: string;
+  provider?: string | null;
 
   @IsEnum(OrderStatus)
   @IsOptional()

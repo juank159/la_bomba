@@ -177,8 +177,27 @@ export class OrdersService {
       }
     }
 
-    Object.assign(order, updateOrderDto);
+    // CRITICAL FIX: Explicitly handle provider updates, including null values
+    // Object.assign may not properly handle null values in all cases
+    console.log('🔵 [OrdersService] Updating order with DTO:', JSON.stringify(updateOrderDto, null, 2));
+    console.log('🔵 [OrdersService] Current order provider:', order.provider);
+
+    if ('description' in updateOrderDto) {
+      order.description = updateOrderDto.description;
+    }
+
+    // IMPORTANT: Handle provider explicitly to support mixed orders (provider = null)
+    if ('provider' in updateOrderDto) {
+      order.provider = updateOrderDto.provider;
+      console.log('🔵 [OrdersService] Provider updated to:', order.provider ?? 'NULL (MIXED ORDER)');
+    }
+
+    if ('status' in updateOrderDto) {
+      order.status = updateOrderDto.status;
+    }
+
     await this.ordersRepository.save(order);
+    console.log('🔵 [OrdersService] Order saved. Provider is now:', order.provider ?? 'NULL (MIXED ORDER)');
 
     if (updateOrderDto.items) {
       await this.orderItemsRepository.delete({ orderId: id });
