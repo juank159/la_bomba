@@ -235,10 +235,13 @@ export class OrdersService {
 
   async addProductToOrder(
     orderId: string,
-    addProductDto: { productId?: string; temporaryProductId?: string; existingQuantity: number; requestedQuantity?: number; measurementUnit: string },
+    addProductDto: { productId?: string; temporaryProductId?: string; existingQuantity: number; requestedQuantity?: number; measurementUnit: string; supplierId?: string },
     userRole: UserRole,
     userId?: string
   ): Promise<Order> {
+    console.log('🔍 [AddProductToOrder] Received DTO:', JSON.stringify(addProductDto, null, 2));
+    console.log('🔍 [AddProductToOrder] supplierId:', addProductDto.supplierId);
+
     const order = await this.findOne(orderId);
 
     // Check permissions
@@ -267,12 +270,18 @@ export class OrdersService {
       orderId,
       productId: addProductDto.productId,
       temporaryProductId: addProductDto.temporaryProductId,
+      supplierId: addProductDto.supplierId,
       existingQuantity: addProductDto.existingQuantity,
       requestedQuantity: addProductDto.requestedQuantity,
       measurementUnit: addProductDto.measurementUnit as any,
     });
 
+    console.log('✅ [AddProductToOrder] OrderItem created with supplierId:', orderItem.supplierId);
+
     await this.orderItemsRepository.save(orderItem);
+
+    console.log('✅ [AddProductToOrder] OrderItem saved successfully');
+
     return this.findOne(orderId);
   }
 

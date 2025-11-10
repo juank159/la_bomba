@@ -48,7 +48,7 @@ export class OrdersController {
   @Post(':id/items')
   addProductToOrder(
     @Param('id') orderId: string,
-    @Body() addProductDto: { productId: string; existingQuantity: number; requestedQuantity?: number; measurementUnit: string },
+    @Body() addProductDto: { productId?: string; temporaryProductId?: string; existingQuantity: number; requestedQuantity?: number; measurementUnit: string; supplierId?: string },
     @Request() req
   ) {
     return this.ordersService.addProductToOrder(orderId, addProductDto, req.user.role, req.user.userId);
