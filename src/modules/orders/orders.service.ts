@@ -282,7 +282,9 @@ export class OrdersService {
 
     console.log('✅ [AddProductToOrder] OrderItem saved successfully');
 
-    return this.findOne(orderId);
+    // Performance optimization: Return existing order object instead of re-fetching
+    // Frontend only checks success/failure, doesn't use returned order data
+    return order;
   }
 
   async removeProductFromOrder(
@@ -308,7 +310,10 @@ export class OrdersService {
     }
 
     await this.orderItemsRepository.remove(orderItem);
-    return this.findOne(orderId);
+
+    // Performance optimization: Return existing order object instead of re-fetching
+    // Frontend only checks success/failure, doesn't use returned order data
+    return order;
   }
 
   async updateOrderItemQuantity(
@@ -353,7 +358,10 @@ export class OrdersService {
     }
 
     await this.orderItemsRepository.save(orderItem);
-    return this.findOne(orderId);
+
+    // Performance optimization: Return existing order object instead of re-fetching
+    // Frontend only checks success/failure, doesn't use returned order data
+    return order;
   }
 
   /**
