@@ -53,6 +53,7 @@ async function bootstrap() {
     'https://la-bomba-414b6.web.app',
     'https://la-bomba-414b6.firebaseapp.com',
     // Vercel domains
+    'https://la-bomba-frontend.vercel.app',  // Main production domain
     /^https:\/\/la-bomba-frontend-.*\.vercel\.app$/,  // All Vercel preview deployments
     /^https:\/\/.*-juank159s-projects\.vercel\.app$/,  // All user's Vercel deployments
   ];
