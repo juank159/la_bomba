@@ -51,7 +51,10 @@ async function bootstrap() {
     /^http:\/\/localhost:\d+$/,  // Allow any localhost port for development
     'https://la-bomba.onrender.com',
     'https://la-bomba-414b6.web.app',
-    'https://la-bomba-414b6.firebaseapp.com'
+    'https://la-bomba-414b6.firebaseapp.com',
+    // Vercel domains
+    /^https:\/\/la-bomba-frontend-.*\.vercel\.app$/,  // All Vercel preview deployments
+    /^https:\/\/.*-juank159s-projects\.vercel\.app$/,  // All user's Vercel deployments
   ];
 
   app.enableCors({
