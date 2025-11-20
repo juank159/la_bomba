@@ -45,11 +45,24 @@ async function bootstrap() {
 
   // CORS configuration
   const allowedOrigins = configService.get<string>('ALLOWED_ORIGINS');
+  const defaultOrigins = [
+    'http://localhost:3000',
+    'http://localhost:8080',
+    /^http:\/\/localhost:\d+$/,  // Allow any localhost port for development
+    'https://la-bomba.onrender.com',
+    'https://la-bomba-414b6.web.app',
+    'https://la-bomba-414b6.firebaseapp.com'
+  ];
+
   app.enableCors({
-    origin: allowedOrigins ? allowedOrigins.split(',') : ['http://localhost:3000'],
+    origin: allowedOrigins
+      ? [...allowedOrigins.split(','), ...defaultOrigins]
+      : defaultOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Authorization'],
+    maxAge: 3600,
   });
 
   // Swagger documentation (only in development)
