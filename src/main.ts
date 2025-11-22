@@ -52,10 +52,15 @@ async function bootstrap() {
     'https://la-bomba.onrender.com',
     'https://la-bomba-414b6.web.app',
     'https://la-bomba-414b6.firebaseapp.com',
-    // Vercel domains
-    'https://la-bomba-frontend.vercel.app',  // Main production domain
-    /^https:\/\/la-bomba-frontend-.*\.vercel\.app$/,  // All Vercel preview deployments
-    /^https:\/\/.*-juank159s-projects\.vercel\.app$/,  // All user's Vercel deployments
+    // Vercel domains - todas las variantes posibles
+    'https://la-bomba-frontend.vercel.app',
+    'https://labombafrontend.vercel.app',  // Dominio principal sin guiones
+    'https://labombafrontend-juank159s-projects.vercel.app',  // Dominio con proyecto
+    'https://labombafrontend-juank159-juank159s-projects.vercel.app',
+    /^https:\/\/la-bomba-frontend-.*\.vercel\.app$/,  // Previews con guiones
+    /^https:\/\/labombafrontend-.*\.vercel\.app$/,  // Previews sin guiones
+    /^https:\/\/.*-juank159s-projects\.vercel\.app$/,  // Todos los deployments del usuario
+    /^https:\/\/web-.*-juank159s-projects\.vercel\.app$/,  // Deployments desde subdirectorio web
   ];
 
   app.enableCors({
