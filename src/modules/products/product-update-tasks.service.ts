@@ -113,38 +113,38 @@ export class ProductUpdateTasksService {
   }
 
   /// Get pending tasks for supervisors
-  async getPendingTasks(page: number = 0, limit: number = 20): Promise<ProductUpdateTask[]> {
+  async getPendingTasks(page: number = 1, limit: number = 20): Promise<ProductUpdateTask[]> {
     console.log('📋 Getting pending tasks:', { page, limit });
-    
+
     return await this.tasksRepository.find({
       where: { status: TaskStatus.PENDING },
-      order: { createdAt: 'DESC' },
-      skip: page * limit,
+      order: { createdAt: 'ASC' },
+      skip: (page - 1) * limit,
       take: limit,
       relations: ['product', 'createdBy'],
     });
   }
 
   /// Get completed tasks
-  async getCompletedTasks(page: number = 0, limit: number = 20): Promise<ProductUpdateTask[]> {
+  async getCompletedTasks(page: number = 1, limit: number = 20): Promise<ProductUpdateTask[]> {
     console.log('✅ Getting completed tasks:', { page, limit });
-    
+
     return await this.tasksRepository.find({
       where: { status: TaskStatus.COMPLETED },
-      order: { completedAt: 'DESC' },
-      skip: page * limit,
+      order: { completedAt: 'ASC' },
+      skip: (page - 1) * limit,
       take: limit,
       relations: ['product', 'createdBy', 'completedBy'],
     });
   }
 
   /// Get all tasks
-  async getAllTasks(page: number = 0, limit: number = 20): Promise<ProductUpdateTask[]> {
+  async getAllTasks(page: number = 1, limit: number = 20): Promise<ProductUpdateTask[]> {
     console.log('📊 Getting all tasks:', { page, limit });
-    
+
     return await this.tasksRepository.find({
-      order: { createdAt: 'DESC' },
-      skip: page * limit,
+      order: { createdAt: 'ASC' },
+      skip: (page - 1) * limit,
       take: limit,
     });
   }

@@ -26,7 +26,7 @@ export class ProductUpdateTasksController {
     @Query('limit') limit?: number,
   ) {
     console.log('📋 GET pending tasks called:', { page, limit });
-    return this.tasksService.getPendingTasks(page || 0, limit || 20);
+    return this.tasksService.getPendingTasks(page || 1, limit || 20);
   }
 
   @Get('completed')
@@ -36,7 +36,7 @@ export class ProductUpdateTasksController {
     @Query('limit') limit?: number,
   ) {
     console.log('✅ GET completed tasks called:', { page, limit });
-    return this.tasksService.getCompletedTasks(page || 0, limit || 20);
+    return this.tasksService.getCompletedTasks(page || 1, limit || 20);
   }
 
   @Get('stats')
@@ -53,7 +53,7 @@ export class ProductUpdateTasksController {
     @Query('limit') limit?: number,
   ) {
     console.log('📊 GET all tasks called:', { page, limit });
-    return this.tasksService.getAllTasks(page || 0, limit || 20);
+    return this.tasksService.getAllTasks(page || 1, limit || 20);
   }
 
   @Get(':id')
