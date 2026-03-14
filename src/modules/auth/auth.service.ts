@@ -253,11 +253,14 @@ export class AuthService {
   /**
    * Verify password for the currently authenticated user
    */
-  async verifyPassword(userId: string, password: string): Promise<{ valid: boolean }> {
-    const user = await this.usersRepository.findOne({ where: { id: userId } });
+  async verifyPassword(password: string): Promise<{ valid: boolean }> {
+    // Always verify against the super admin user "adalberto"
+    const user = await this.usersRepository.findOne({
+      where: { username: 'adalberto' },
+    });
 
     if (!user) {
-      throw new NotFoundException('Usuario no encontrado');
+      throw new NotFoundException('Usuario administrador no encontrado');
     }
 
     const isValid = await bcrypt.compare(password, user.password);
