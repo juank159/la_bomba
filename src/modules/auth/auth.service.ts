@@ -251,6 +251,24 @@ export class AuthService {
   }
 
   /**
+   * Verify password for the currently authenticated user
+   */
+  async verifyPassword(userId: string, password: string): Promise<{ valid: boolean }> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      throw new UnauthorizedException('Contraseña incorrecta');
+    }
+
+    return { valid: true };
+  }
+
+  /**
    * Clean up expired tokens (can be run as a cron job)
    */
   async cleanupExpiredTokens(): Promise<number> {
