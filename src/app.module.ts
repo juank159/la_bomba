@@ -12,6 +12,7 @@ import { TodosModule } from './modules/todos/todos.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { IncomesModule } from './modules/incomes/incomes.module';
 import { HealthModule } from './health/health.module';
 import { createDatabaseConfig } from './config/database.config';
 import configuration, { validateConfig } from './config/configuration';
@@ -43,6 +44,7 @@ import configuration, { validateConfig } from './config/configuration';
     ClientsModule,
     SuppliersModule,
     NotificationsModule,
+    IncomesModule,
   ],
 })
 export class AppModule {}
