@@ -272,6 +272,33 @@ export class AuthService {
   }
 
   /**
+   * Change password for authenticated user
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentValid) {
+      throw new UnauthorizedException('La contraseña actual es incorrecta');
+    }
+
+    if (newPassword.length < 6) {
+      throw new BadRequestException('La nueva contraseña debe tener al menos 6 caracteres');
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await this.usersRepository.save(user);
+
+    this.logger.log(`Password changed for user: ${user.username}`);
+
+    return { message: 'Contraseña actualizada exitosamente' };
+  }
+
+  /**
    * Clean up expired tokens (can be run as a cron job)
    */
   async cleanupExpiredTokens(): Promise<number> {

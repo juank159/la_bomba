@@ -44,6 +44,15 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  async changePassword(
+    @Body() body: { currentPassword: string; newPassword: string },
+    @Request() req,
+  ) {
+    return this.authService.changePassword(req.user.userId, body.currentPassword, body.newPassword);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(@Request() req) {
     return this.authService.logout(req.user.userId);
