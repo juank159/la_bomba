@@ -160,19 +160,18 @@ export class ProductsController {
   }
 
   @Get("temporary")
-  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.DIGITADOR)
   findAllTemporaryProducts(@Request() req: any) {
     console.log('🔍 GET /products/temporary called by:', {
       userId: req.user?.userId,
       username: req.user?.username,
       role: req.user?.role,
-      roleType: typeof req.user?.role,
     });
     return this.productsService.findAllTemporaryProducts();
   }
 
   @Get("temporary/:id")
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.DIGITADOR)
   findTemporaryProduct(@Param("id") id: string) {
     return this.productsService.findTemporaryProduct(id);
   }
