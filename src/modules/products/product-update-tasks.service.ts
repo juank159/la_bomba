@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, forwardRef, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProductUpdateTask, TaskStatus, ChangeType } from './entities/product-update-task.entity';
+import { ProductUpdateTask, TaskStatus, ChangeType, AssignedRole } from './entities/product-update-task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -25,10 +25,12 @@ export class ProductUpdateTasksService {
 
   /// Create a new update task
   async create(createTaskDto: CreateTaskDto, createdById: string): Promise<ProductUpdateTask> {
-    console.log('📝 Creating new task:', { ...createTaskDto, createdById });
+    const assignedRole = createTaskDto.assignedRole ?? AssignedRole.SUPERVISOR;
+    console.log('📝 Creating new task:', { ...createTaskDto, assignedRole, createdById });
 
     const task = this.tasksRepository.create({
       ...createTaskDto,
+      assignedRole,
       createdById,
       status: TaskStatus.PENDING,
     });
@@ -36,62 +38,43 @@ export class ProductUpdateTasksService {
     const savedTask = await this.tasksRepository.save(task);
     console.log('✅ Task created:', savedTask.id);
 
-    // Load the task with relations to return complete data
     const taskWithRelations = await this.tasksRepository.findOne({
       where: { id: savedTask.id },
       relations: ['product', 'createdBy'],
     });
 
-    // Get product details for notification
     const product = await this.productsRepository.findOne({
       where: { id: createTaskDto.productId },
     });
 
     if (product) {
-      console.log('📬 Sending notifications to supervisors for task:', savedTask.id);
+      // Map AssignedRole → UserRole para buscar destinatarios
+      const recipientRole: UserRole =
+        assignedRole === AssignedRole.DIGITADOR ? UserRole.DIGITADOR : UserRole.SUPERVISOR;
 
-      // Get all active supervisors
-      const supervisors = await this.usersRepository.find({
-        where: { role: UserRole.SUPERVISOR, isActive: true },
+      const recipients = await this.usersRepository.find({
+        where: { role: recipientRole, isActive: true },
       });
 
-      console.log(`📣 Found ${supervisors.length} supervisors to notify`);
+      console.log(`📬 Found ${recipients.length} ${recipientRole}(s) to notify for task ${savedTask.id}`);
 
-      // Build notification title and message based on change type
-      let changeTypeText = 'información';
-      let notificationType = NotificationType.PRODUCT_UPDATE;
-
-      switch (createTaskDto.changeType) {
-        case ChangeType.PRICE:
-          changeTypeText = 'precios';
-          break;
-        case ChangeType.INFO:
-          changeTypeText = 'información';
-          break;
-        case ChangeType.ARRIVAL:
-          changeTypeText = 'llegada';
-          break;
-      }
-
+      const changeTypeText = this.changeTypeLabel(createTaskDto.changeType);
       const title = `Producto actualizado: ${product.description}`;
       const message = `Se actualizó ${changeTypeText} del producto "${product.description}". ${createTaskDto.description || ''}`.trim();
 
-      // Send push notifications to all supervisors
-      for (const supervisor of supervisors) {
+      for (const recipient of recipients) {
         try {
-          // Create notification in database
           await this.notificationsService.createNotification(
-            supervisor.id,
+            recipient.id,
             title,
             message,
-            notificationType,
+            NotificationType.PRODUCT_UPDATE,
             product.id,
             savedTask.id,
           );
 
-          // Send Firebase push notification
           await this.firebaseNotificationService.sendToUser(
-            supervisor.id,
+            recipient.id,
             title,
             message,
             {
@@ -101,10 +84,9 @@ export class ProductUpdateTasksService {
             }
           );
 
-          console.log(`✅ Notification sent to supervisor: ${supervisor.username}`);
+          console.log(`✅ Notification sent to ${recipientRole}: ${recipient.username}`);
         } catch (error) {
-          console.error(`⚠️ Failed to send notification to supervisor ${supervisor.username}:`, error);
-          // Continue with other supervisors even if one fails
+          console.error(`⚠️ Failed to send notification to ${recipientRole} ${recipient.username}:`, error);
         }
       }
     }
@@ -112,12 +94,35 @@ export class ProductUpdateTasksService {
     return taskWithRelations;
   }
 
-  /// Get pending tasks for supervisors
-  async getPendingTasks(page: number = 1, limit: number = 20): Promise<ProductUpdateTask[]> {
-    console.log('📋 Getting pending tasks:', { page, limit });
+  /// Etiqueta legible para el tipo de cambio (usado en mensajes de notificación)
+  private changeTypeLabel(changeType: ChangeType): string {
+    switch (changeType) {
+      case ChangeType.PRICE: return 'precios';
+      case ChangeType.NAME: return 'nombre';
+      case ChangeType.IVA: return 'IVA';
+      case ChangeType.BARCODE: return 'código de barras';
+      case ChangeType.DESCRIPTION: return 'descripción';
+      case ChangeType.ARRIVAL: return 'llegada';
+      case ChangeType.INVENTORY: return 'inventario';
+      case ChangeType.INFO:
+      default:
+        return 'información';
+    }
+  }
+
+  /// Pending tasks visibles para un rol (supervisor/digitador). Si es null, devuelve todas (admin).
+  async getPendingTasks(
+    page: number = 1,
+    limit: number = 20,
+    assignedRole?: AssignedRole,
+  ): Promise<ProductUpdateTask[]> {
+    console.log('📋 Getting pending tasks:', { page, limit, assignedRole });
+
+    const where: any = { status: TaskStatus.PENDING };
+    if (assignedRole) where.assignedRole = assignedRole;
 
     return await this.tasksRepository.find({
-      where: { status: TaskStatus.PENDING },
+      where,
       order: { createdAt: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -125,12 +130,19 @@ export class ProductUpdateTasksService {
     });
   }
 
-  /// Get completed tasks
-  async getCompletedTasks(page: number = 1, limit: number = 20): Promise<ProductUpdateTask[]> {
-    console.log('✅ Getting completed tasks:', { page, limit });
+  /// Completed tasks visibles para un rol. Si es null, devuelve todas (admin).
+  async getCompletedTasks(
+    page: number = 1,
+    limit: number = 20,
+    assignedRole?: AssignedRole,
+  ): Promise<ProductUpdateTask[]> {
+    console.log('✅ Getting completed tasks:', { page, limit, assignedRole });
+
+    const where: any = { status: TaskStatus.COMPLETED };
+    if (assignedRole) where.assignedRole = assignedRole;
 
     return await this.tasksRepository.find({
-      where: { status: TaskStatus.COMPLETED },
+      where,
       order: { completedAt: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -138,11 +150,16 @@ export class ProductUpdateTasksService {
     });
   }
 
-  /// Get all tasks
-  async getAllTasks(page: number = 1, limit: number = 20): Promise<ProductUpdateTask[]> {
-    console.log('📊 Getting all tasks:', { page, limit });
+  /// All tasks visibles para un rol. Si es null, devuelve todas (admin).
+  async getAllTasks(
+    page: number = 1,
+    limit: number = 20,
+    assignedRole?: AssignedRole,
+  ): Promise<ProductUpdateTask[]> {
+    console.log('📊 Getting all tasks:', { page, limit, assignedRole });
 
     return await this.tasksRepository.find({
+      where: assignedRole ? { assignedRole } : {},
       order: { createdAt: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -200,22 +217,11 @@ export class ProductUpdateTasksService {
         });
 
         if (product) {
-          // Build notification title and message based on change type
-          let changeTypeText = 'información';
-          switch (task.changeType) {
-            case ChangeType.PRICE:
-              changeTypeText = 'precios';
-              break;
-            case ChangeType.INFO:
-              changeTypeText = 'información';
-              break;
-            case ChangeType.ARRIVAL:
-              changeTypeText = 'llegada';
-              break;
-          }
+          const changeTypeText = this.changeTypeLabel(task.changeType);
+          const roleLabel = task.assignedRole === AssignedRole.DIGITADOR ? 'digitador' : 'supervisor';
 
           const title = `Tarea completada: ${product.description}`;
-          const message = `El supervisor completó la tarea de ${changeTypeText} del producto "${product.description}".\n\nNota: ${completeTaskDto.notes}`;
+          const message = `El ${roleLabel} completó la tarea de ${changeTypeText} del producto "${product.description}".\n\nNota: ${completeTaskDto.notes}`;
 
           // Get admin user (assuming there's one admin with role 'admin')
           // In production, you might want to notify all admins
@@ -239,12 +245,15 @@ export class ProductUpdateTasksService {
     return updatedTask;
   }
 
-  /// Get tasks count by status
-  async getTasksCount(): Promise<{ pending: number; completed: number; total: number }> {
+  /// Tasks count por rol. Si assignedRole es null, cuenta todas (admin).
+  async getTasksCount(
+    assignedRole?: AssignedRole,
+  ): Promise<{ pending: number; completed: number; total: number }> {
+    const baseWhere: any = assignedRole ? { assignedRole } : {};
     const [pending, completed, total] = await Promise.all([
-      this.tasksRepository.count({ where: { status: TaskStatus.PENDING } }),
-      this.tasksRepository.count({ where: { status: TaskStatus.COMPLETED } }),
-      this.tasksRepository.count(),
+      this.tasksRepository.count({ where: { ...baseWhere, status: TaskStatus.PENDING } }),
+      this.tasksRepository.count({ where: { ...baseWhere, status: TaskStatus.COMPLETED } }),
+      this.tasksRepository.count({ where: baseWhere }),
     ]);
 
     return { pending, completed, total };
@@ -272,10 +281,12 @@ export class ProductUpdateTasksService {
     createdById: string,
     description?: string,
     adminNotes?: string,
+    assignedRole: AssignedRole = AssignedRole.SUPERVISOR,
   ): Promise<ProductUpdateTask> {
     console.log('🔄 Auto-creating task for product update:', {
       productId,
       changeType,
+      assignedRole,
       createdById,
       hasAdminNotes: !!adminNotes
     });
@@ -287,6 +298,7 @@ export class ProductUpdateTasksService {
       newValue,
       description: description || `${changeType} update for product`,
       adminNotes,
+      assignedRole,
     };
 
     return await this.create(createTaskDto, createdById);

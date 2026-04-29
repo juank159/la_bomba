@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsEnum, IsOptional, IsObject } from 'class-validator';
-import { ChangeType } from '../entities/product-update-task.entity';
+import { ChangeType, AssignedRole } from '../entities/product-update-task.entity';
 
 export class CreateTaskDto {
   @IsString()
@@ -24,4 +24,8 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   adminNotes?: string;
+
+  @IsOptional()
+  @IsEnum(AssignedRole)
+  assignedRole?: AssignedRole;
 }

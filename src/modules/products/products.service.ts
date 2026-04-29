@@ -16,7 +16,7 @@ import { UpdateProductDto } from "./dto/update-product.dto";
 import { CreateTemporaryProductDto } from "./dto/create-temporary-product.dto";
 import { UpdateTemporaryProductDto } from "./dto/update-temporary-product.dto";
 import { ProductUpdateTasksService } from "./product-update-tasks.service";
-import { ChangeType } from "./entities/product-update-task.entity";
+import { ChangeType, AssignedRole } from "./entities/product-update-task.entity";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NotificationType } from "../notifications/entities/notification.entity";
 import { User, UserRole } from "../users/entities/user.entity";
@@ -89,14 +89,16 @@ export class ProductsService {
 
     console.log('✅ Temporary product created for supervisor:', savedTemporaryProduct.id);
 
-    // 3. Notify all supervisors
-    const supervisors = await this.usersRepository.find({
-      where: { role: UserRole.SUPERVISOR, isActive: true },
+    // 3. Notify supervisors AND digitadores (productos nuevos van a ambos roles)
+    const recipients = await this.usersRepository.find({
+      where: [
+        { role: UserRole.SUPERVISOR, isActive: true },
+        { role: UserRole.DIGITADOR, isActive: true },
+      ],
     });
 
-    console.log(`📣 Notifying ${supervisors.length} supervisors`);
+    console.log(`📣 Notifying ${recipients.length} recipient(s) about new product`);
 
-    // Build detailed message
     const hasBarcode = savedProduct.barcode && savedProduct.barcode.trim();
     const barcodeMessage = hasBarcode
       ? `Código de barras: ${savedProduct.barcode}`
@@ -108,9 +110,9 @@ export class ProductsService {
       `IVA: ${savedProduct.iva}%\n\n` +
       `Por favor, revise el producto${!hasBarcode ? ' y agregue el código de barras' : ''}.`;
 
-    const notificationPromises = supervisors.map((supervisor) =>
+    const notificationPromises = recipients.map((recipient) =>
       this.notificationsService.createNotification(
-        supervisor.id,
+        recipient.id,
         'Nuevo producto creado - Requiere revisión',
         detailedMessage,
         NotificationType.TEMPORARY_PRODUCT_PENDING_SUPERVISOR,
@@ -122,7 +124,7 @@ export class ProductsService {
 
     await Promise.all(notificationPromises);
 
-    console.log('✅ Notifications sent to all supervisors');
+    console.log('✅ Notifications sent to supervisors and digitadores');
 
     // Reload with relations
     const reloadedTemporaryProduct = await this.temporaryProductsRepository.findOne({
@@ -294,7 +296,22 @@ export class ProductsService {
     return savedProduct;
   }
 
-  /// Helper method to create update tasks
+  /**
+   * Detecta cambios y crea las tareas necesarias por edición de producto.
+   *
+   * Reglas de ruteo:
+   *   • Supervisor: SOLO recibe tarea cuando cambia el precio.
+   *     Una única tarea PRICE con la lista de campos modificados (precioA, precioB, etc).
+   *
+   *   • Digitador: recibe UNA tarea agrupada por edición que consolida TODOS los cambios
+   *     que le corresponden (precio, nombre, IVA, barcode). El changeType refleja el
+   *     contenido:
+   *       - 1 solo cambio → tipo específico (PRICE / NAME / IVA / BARCODE)
+   *       - múltiples cambios → tipo INFO con descripción que lista cada campo
+   *
+   * Las tareas son independientes: que supervisor complete la suya no afecta la del
+   * digitador y viceversa.
+   */
   private async createUpdateTask(
     oldValues: any,
     updateData: UpdateProductDto,
@@ -304,90 +321,108 @@ export class ProductsService {
   ): Promise<void> {
     const priceFields = ["precioA", "precioB", "precioC", "costo"];
 
-    let hasChanges = false;
-    let changeType = ChangeType.INFO;
-    let description = "";
-    const changeDetails: string[] = [];
-
-    // Check for price changes
     const priceChanges = priceFields.filter(
       (field) =>
         updateData[field] !== undefined &&
         updateData[field] !== oldValues[field]
     );
 
-    // Check for description change
-    const descriptionChanged =
+    const nameChanged =
       updateData["description"] !== undefined &&
       updateData["description"] !== oldValues["description"];
 
-    // Check for IVA change
     const ivaChanged =
       updateData["iva"] !== undefined && updateData["iva"] !== oldValues["iva"];
 
-    // Check for barcode change
     const barcodeChanged =
       updateData["barcode"] !== undefined &&
       updateData["barcode"] !== oldValues["barcode"];
 
-    // Build detailed change description
+    type TaskSpec = {
+      changeType: ChangeType;
+      description: string;
+      assignedRole: AssignedRole;
+    };
+    const tasksToCreate: TaskSpec[] = [];
+
+    // --- Tarea para SUPERVISOR (solo si cambió precio) ---
     if (priceChanges.length > 0) {
-      hasChanges = true;
-      changeType = ChangeType.PRICE;
-      changeDetails.push(`Precios: ${priceChanges.join(", ")}`);
+      tasksToCreate.push({
+        changeType: ChangeType.PRICE,
+        description: `Precios: ${priceChanges.join(", ")}`,
+        assignedRole: AssignedRole.SUPERVISOR,
+      });
     }
 
-    if (descriptionChanged) {
-      hasChanges = true;
-      if (changeType !== ChangeType.PRICE) {
-        changeType = ChangeType.INFO;
-      }
-      changeDetails.push(`Nombre del producto`);
-    }
+    // --- Tarea agrupada para DIGITADOR ---
+    // Acumula cada cambio que le corresponde con su tipo y descripción legible.
+    type DigitadorChange = { type: ChangeType; description: string };
+    const digitadorChanges: DigitadorChange[] = [];
 
+    if (priceChanges.length > 0) {
+      digitadorChanges.push({
+        type: ChangeType.PRICE,
+        description: `Precios (${priceChanges.join(", ")})`,
+      });
+    }
+    if (nameChanged) {
+      digitadorChanges.push({
+        type: ChangeType.NAME,
+        description: `Nombre del producto`,
+      });
+    }
     if (ivaChanged) {
-      hasChanges = true;
-      if (changeType !== ChangeType.PRICE) {
-        changeType = ChangeType.INFO;
-      }
-      changeDetails.push(`IVA (${oldValues["iva"]}% → ${updateData["iva"]}%)`);
+      digitadorChanges.push({
+        type: ChangeType.IVA,
+        description: `IVA (${oldValues["iva"]}% → ${updateData["iva"]}%)`,
+      });
     }
-
     if (barcodeChanged) {
-      hasChanges = true;
-      if (changeType !== ChangeType.PRICE) {
-        changeType = ChangeType.INFO;
-      }
       const oldBarcode = oldValues["barcode"] || "sin código";
       const newBarcode = updateData["barcode"] || "sin código";
-      changeDetails.push(`Código de barras (${oldBarcode} → ${newBarcode})`);
-    }
-
-    if (hasChanges) {
-      description = changeDetails.join(", ");
-
-      console.log("📝 Creating update task for product:", {
-        productId: product.id,
-        changeType,
-        description,
-        changes: {
-          prices: priceChanges,
-          descriptionChanged,
-          ivaChanged,
-          barcodeChanged,
-        },
+      digitadorChanges.push({
+        type: ChangeType.BARCODE,
+        description: `Código de barras (${oldBarcode} → ${newBarcode})`,
       });
-
-      await this.tasksService.createTaskForProductUpdate(
-        product.id,
-        changeType,
-        oldValues,
-        updateData,
-        updatedById,
-        description,
-        adminNotes
-      );
     }
+
+    if (digitadorChanges.length > 0) {
+      // Si solo hay 1 cambio, usar su tipo específico. Si hay varios, usar INFO
+      // (representa "edición con múltiples cambios" — la descripción los detalla).
+      const groupedType =
+        digitadorChanges.length === 1 ? digitadorChanges[0].type : ChangeType.INFO;
+      const groupedDescription = digitadorChanges
+        .map((c) => c.description)
+        .join(", ");
+
+      tasksToCreate.push({
+        changeType: groupedType,
+        description: groupedDescription,
+        assignedRole: AssignedRole.DIGITADOR,
+      });
+    }
+
+    if (tasksToCreate.length === 0) return;
+
+    console.log(
+      `📝 Creating ${tasksToCreate.length} update task(s) for product ${product.id}:`,
+      tasksToCreate.map((t) => `${t.changeType}→${t.assignedRole}`).join(", ")
+    );
+
+    await Promise.all(
+      tasksToCreate.map((spec) =>
+        this.tasksService.createTaskForProductUpdate(
+          product.id,
+          spec.changeType,
+          oldValues,
+          updateData,
+          updatedById,
+          spec.description,
+          adminNotes,
+          spec.assignedRole
+        )
+      )
+    );
   }
 
   async remove(id: string): Promise<void> {
@@ -595,9 +630,12 @@ export class ProductsService {
         relations: ['completedByAdminUser', 'completedBySupervisorUser'],
       });
 
-      // Notificar a todos los supervisores con los detalles de precios e IVA
+      // Notificar a supervisores Y digitadores con los detalles de precios e IVA
       const supervisors = await this.usersRepository.find({
-        where: { role: UserRole.SUPERVISOR, isActive: true },
+        where: [
+          { role: UserRole.SUPERVISOR, isActive: true },
+          { role: UserRole.DIGITADOR, isActive: true },
+        ],
       });
 
       // Construir mensaje detallado con precios e IVA

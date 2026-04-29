@@ -10,9 +10,22 @@ export enum TaskStatus {
 
 export enum ChangeType {
   PRICE = 'price',
-  INFO = 'info',
+  INFO = 'info', // legado: cambio genérico (tareas viejas). Nuevas ediciones usan los tipos granulares
   INVENTORY = 'inventory',
   ARRIVAL = 'arrival',
+  NAME = 'name',
+  IVA = 'iva',
+  BARCODE = 'barcode',
+  DESCRIPTION = 'description',
+}
+
+/**
+ * Rol al que se asigna una tarea. Cuando un cambio afecta a múltiples roles
+ * se crean tareas separadas (una por rol) con su propio status/completedBy.
+ */
+export enum AssignedRole {
+  SUPERVISOR = 'supervisor',
+  DIGITADOR = 'digitador',
 }
 
 @Entity('product_update_tasks')
@@ -33,6 +46,14 @@ export class ProductUpdateTask {
     default: ChangeType.PRICE,
   })
   changeType: ChangeType;
+
+  @Column({
+    type: 'enum',
+    enum: AssignedRole,
+    default: AssignedRole.SUPERVISOR,
+    enumName: 'product_update_tasks_assigned_role_enum',
+  })
+  assignedRole: AssignedRole;
 
   @Column({ type: 'jsonb', nullable: true })
   oldValue: any;
