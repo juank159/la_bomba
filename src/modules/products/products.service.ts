@@ -338,19 +338,45 @@ export class ProductsService {
       updateData["barcode"] !== undefined &&
       updateData["barcode"] !== oldValues["barcode"];
 
+    /**
+     * Construye payload (oldValue/newValue) restringido a un set de campos.
+     * Solo incluye campos que efectivamente cambiaron; el frontend renderiza
+     * cada uno en formato "antes → después".
+     */
+    const buildScopedPayload = (fields: string[]): { oldV: any; newV: any } => {
+      const oldV: Record<string, any> = {};
+      const newV: Record<string, any> = {};
+      for (const f of fields) {
+        const before = oldValues?.[f];
+        const after = (updateData as any)[f];
+        if (after !== undefined && after !== before) {
+          oldV[f] = before;
+          newV[f] = after;
+        }
+      }
+      return { oldV, newV };
+    };
+
     type TaskSpec = {
       changeType: ChangeType;
       description: string;
       assignedRole: AssignedRole;
+      oldValue: any;
+      newValue: any;
     };
     const tasksToCreate: TaskSpec[] = [];
 
     // --- Tarea para SUPERVISOR (solo si cambió precio) ---
+    // Payload: SOLO campos de precio (precioA/B/C, costo). Nombre/IVA/barcode
+    // pertenecen al digitador y NO deben aparecer en el detalle del supervisor.
     if (priceChanges.length > 0) {
+      const { oldV, newV } = buildScopedPayload(priceFields);
       tasksToCreate.push({
         changeType: ChangeType.PRICE,
         description: `Precios: ${priceChanges.join(", ")}`,
         assignedRole: AssignedRole.SUPERVISOR,
+        oldValue: oldV,
+        newValue: newV,
       });
     }
 
@@ -395,10 +421,20 @@ export class ProductsService {
         .map((c) => c.description)
         .join(", ");
 
+      // Payload: campos del digitador (precios + nombre/description + IVA + barcode)
+      const { oldV, newV } = buildScopedPayload([
+        ...priceFields,
+        "description",
+        "iva",
+        "barcode",
+      ]);
+
       tasksToCreate.push({
         changeType: groupedType,
         description: groupedDescription,
         assignedRole: AssignedRole.DIGITADOR,
+        oldValue: oldV,
+        newValue: newV,
       });
     }
 
@@ -414,8 +450,8 @@ export class ProductsService {
         this.tasksService.createTaskForProductUpdate(
           product.id,
           spec.changeType,
-          oldValues,
-          updateData,
+          spec.oldValue,
+          spec.newValue,
           updatedById,
           spec.description,
           adminNotes,
