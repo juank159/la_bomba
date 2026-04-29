@@ -58,9 +58,27 @@ export class ProductUpdateTasksService {
 
       console.log(`📬 Found ${recipients.length} ${recipientRole}(s) to notify for task ${savedTask.id}`);
 
-      const changeTypeText = this.changeTypeLabel(createTaskDto.changeType);
-      const title = `Producto actualizado: ${product.description}`;
-      const message = `Se actualizó ${changeTypeText} del producto "${product.description}". ${createTaskDto.description || ''}`.trim();
+      // Construir título y mensaje específicos según rol y tipo de cambio.
+      // El supervisor ve precios y llegadas; el digitador ve cambios de info.
+      // Para edición múltiple del digitador (changeType=INFO con descripción que
+      // lista varios campos) marcamos el título como "Edición múltiple".
+      const isMultipleChanges =
+        assignedRole === AssignedRole.DIGITADOR &&
+        createTaskDto.changeType === ChangeType.INFO &&
+        (createTaskDto.description?.includes(',') ?? false);
+
+      const titlePrefix = this.titlePrefixFor(
+        createTaskDto.changeType,
+        assignedRole,
+        isMultipleChanges,
+      );
+      const title = `${titlePrefix} — ${product.description}`;
+
+      // Mensaje claro: detalla qué se cambió, sin redundar el nombre del producto.
+      const detail = (createTaskDto.description || '').trim();
+      const message = detail
+        ? `${titlePrefix}: ${detail}`
+        : titlePrefix;
 
       for (const recipient of recipients) {
         try {
@@ -107,6 +125,44 @@ export class ProductUpdateTasksService {
       case ChangeType.INFO:
       default:
         return 'información';
+    }
+  }
+
+  /**
+   * Prefijo del título de notificación. Identifica claramente el tipo de cambio
+   * para que el usuario diferencie las tareas de un vistazo (no aparece como
+   * "Producto actualizado" genérico).
+   */
+  private titlePrefixFor(
+    changeType: ChangeType,
+    assignedRole: AssignedRole,
+    isMultipleChanges: boolean,
+  ): string {
+    if (isMultipleChanges) {
+      return 'Edición múltiple';
+    }
+    switch (changeType) {
+      case ChangeType.PRICE:
+        return 'Cambio de precio';
+      case ChangeType.NAME:
+        return 'Cambio de nombre';
+      case ChangeType.IVA:
+        return 'Cambio de IVA';
+      case ChangeType.BARCODE:
+        return 'Cambio de código de barras';
+      case ChangeType.DESCRIPTION:
+        return 'Cambio de descripción';
+      case ChangeType.ARRIVAL:
+        return 'Llegada de producto';
+      case ChangeType.INVENTORY:
+        return 'Cambio de inventario';
+      case ChangeType.INFO:
+      default:
+        // INFO con un solo cambio cae acá (no debería pasar con la nueva lógica
+        // pero lo cubrimos por compatibilidad con tareas legadas).
+        return assignedRole === AssignedRole.DIGITADOR
+          ? 'Cambio de información'
+          : 'Cambio en producto';
     }
   }
 
@@ -219,9 +275,10 @@ export class ProductUpdateTasksService {
         if (product) {
           const changeTypeText = this.changeTypeLabel(task.changeType);
           const roleLabel = task.assignedRole === AssignedRole.DIGITADOR ? 'digitador' : 'supervisor';
+          const roleLabelCap = roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1);
 
-          const title = `Tarea completada: ${product.description}`;
-          const message = `El ${roleLabel} completó la tarea de ${changeTypeText} del producto "${product.description}".\n\nNota: ${completeTaskDto.notes}`;
+          const title = `${roleLabelCap} completó tarea — ${product.description}`;
+          const message = `El ${roleLabel} completó la tarea de ${changeTypeText}.\n\nNota: ${completeTaskDto.notes}`;
 
           // Get admin user (assuming there's one admin with role 'admin')
           // In production, you might want to notify all admins
