@@ -59,9 +59,13 @@ export const createDatabaseConfig = (
     configService.get<string>("environment") || process.env.NODE_ENV;
   const databaseUrl = process.env.DATABASE_URL;
 
-  // Si existe DATABASE_URL (Render o Supabase), parseamos la URL
+  // Si existe DATABASE_URL (Render, Supabase o Dokploy), parseamos la URL
   if (databaseUrl) {
     const parsedUrl = new url.URL(databaseUrl);
+    // Supabase requiere SSL; el Postgres self-hosted de Dokploy no lo soporta
+    const requiresSsl =
+      parsedUrl.searchParams.get("sslmode") === "require" ||
+      parsedUrl.hostname.includes("supabase.co");
     return {
       type: "postgres",
       host: parsedUrl.hostname,
@@ -70,29 +74,29 @@ export const createDatabaseConfig = (
       password: parsedUrl.password,
       database: parsedUrl.pathname.replace("/", ""),
       entities: [__dirname + "/../**/*.entity{.ts,.js}"],
-      synchronize: true, // TEMPORALMENTE habilitado para agregar columna payment_method_id
+      synchronize: environment !== "production",
       logging: environment === "development",
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl: requiresSsl ? { rejectUnauthorized: false } : false,
       extra: {
         family: 4,
       },
     };
   }
 
-  // Si no hay DATABASE_URL (entorno local)
+  // Si no hay DATABASE_URL (variables individuales DB_HOST, DB_PORT, etc.)
+  const dbHost = configService.get<string>("database.host");
+  const requiresSsl = !!dbHost && dbHost.includes("supabase.co");
   return {
     type: "postgres",
-    host: configService.get<string>("database.host"),
+    host: dbHost,
     port: configService.get<number>("database.port"),
     username: configService.get<string>("database.username"),
     password: configService.get<string>("database.password"),
     database: configService.get<string>("database.name"),
     entities: [__dirname + "/../**/*.entity{.ts,.js}"],
-    synchronize: true, // TEMPORALMENTE habilitado para agregar columna payment_method_id
+    synchronize: environment !== "production",
     logging: environment === "development",
-    ssl: environment === "production" ? { rejectUnauthorized: false } : false,
+    ssl: requiresSsl ? { rejectUnauthorized: false } : false,
     extra: {
       family: 4,
     },
@@ -108,14 +112,11 @@ export const databaseConfig: TypeOrmModuleOptions = {
   password: process.env.DB_PASSWORD || "password",
   database: process.env.DB_NAME || "pedidos_db",
   entities: [__dirname + "/../**/*.entity{.ts,.js}"],
-  synchronize: true, // TEMPORALMENTE habilitado para agregar columna payment_method_id
+  synchronize: process.env.NODE_ENV !== "production",
   logging: process.env.NODE_ENV === "development",
-  ssl:
-    process.env.NODE_ENV === "production"
-      ? {
-          rejectUnauthorized: false,
-        }
-      : false,
+  ssl: (process.env.DB_HOST || "").includes("supabase.co")
+    ? { rejectUnauthorized: false }
+    : false,
   extra: {
     family: 4,
   },
