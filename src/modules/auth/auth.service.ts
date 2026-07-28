@@ -55,6 +55,7 @@ export class AuthService {
     const payload = { username: user.username, sub: user.id, role: user.role };
     return {
       access_token: this.jwtService.sign(payload),
+      refresh_token: this.signRefreshToken(user.id),
       user: {
         id: user.id,
         username: user.username,
@@ -62,6 +63,44 @@ export class AuthService {
         role: user.role,
       },
     };
+  }
+
+  /**
+   * Exchange a valid refresh token for a new access token.
+   * The frontend already calls POST /auth/refresh whenever an access token
+   * expires (see dio_client.dart) — this route didn't exist until now, so
+   * every expired session silently logged the user out with no way back.
+   */
+  async refreshAccessToken(refreshToken: string) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+
+    let decoded: { sub?: string; type?: string };
+    try {
+      decoded = this.jwtService.verify(refreshToken);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    if (decoded.type !== 'refresh' || !decoded.sub) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const user = await this.usersRepository.findOne({ where: { id: decoded.sub } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const payload = { username: user.username, sub: user.id, role: user.role };
+    return {
+      access_token: this.jwtService.sign(payload),
+      refresh_token: this.signRefreshToken(user.id),
+    };
+  }
+
+  private signRefreshToken(userId: string): string {
+    return this.jwtService.sign({ sub: userId, type: 'refresh' }, { expiresIn: '30d' });
   }
 
   async register(registerDto: RegisterDto) {

@@ -22,6 +22,11 @@ export class AuthController {
     return this.authService.register(registerDto);
   }
 
+  @Post('refresh')
+  async refresh(@Body() body: { refresh_token: string }) {
+    return this.authService.refreshAccessToken(body.refresh_token);
+  }
+
   @Post('create-admin')
   async createAdmin() {
     return this.authService.createAdmin();
