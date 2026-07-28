@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository, LessThan, MoreThan } from 'typeorm';
 import { Credit, CreditStatus } from './entities/credit.entity';
 import { Payment } from './entities/payment.entity';
 import { CreditTransaction, TransactionType } from './entities/transaction.entity';
@@ -11,6 +11,9 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ClientBalanceService } from './client-balance.service';
 import { Notification, NotificationType } from '../notifications/entities/notification.entity';
 import { User, UserRole } from '../users/entities/user.entity';
+
+// Ventana para detectar envíos duplicados (doble clic / reintentos de red)
+const DUPLICATE_SUBMISSION_WINDOW_MS = 15000;
 
 @Injectable()
 export class CreditsService {
@@ -339,6 +342,24 @@ export class CreditsService {
       throw new BadRequestException('El monto debe ser mayor a cero');
     }
 
+    // Evita duplicados por doble clic / reintentos del cliente: si ya se registró
+    // el mismo aumento de deuda (mismo crédito, monto, descripción y usuario) en
+    // los últimos segundos, se responde con el crédito actual sin duplicar la transacción.
+    const recentDuplicate = await this.transactionsRepository.findOne({
+      where: {
+        creditId: id,
+        type: TransactionType.DEBT_INCREASE,
+        amount,
+        description,
+        createdBy: username,
+        createdAt: MoreThan(new Date(Date.now() - DUPLICATE_SUBMISSION_WINDOW_MS)),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (recentDuplicate) {
+      return this.findOne(id);
+    }
+
     const newTotalAmount = Number(credit.totalAmount) + Number(amount);
     const newRemainingAmount = Number(credit.remainingAmount) + Number(amount);
 
@@ -383,6 +404,23 @@ export class CreditsService {
     // Validar que el monto del pago sea mayor a cero
     if (paymentAmount <= 0) {
       throw new BadRequestException('El monto del pago debe ser mayor a cero');
+    }
+
+    // Evita duplicados por doble clic / reintentos del cliente: si ya se registró
+    // el mismo pago (mismo crédito, monto, método y usuario) en los últimos
+    // segundos, se responde con el crédito actual sin duplicar el pago.
+    const recentDuplicatePayment = await this.paymentsRepository.findOne({
+      where: {
+        creditId,
+        amount: paymentAmount,
+        description: createPaymentDto.description || 'Pago',
+        createdBy: username,
+        createdAt: MoreThan(new Date(Date.now() - DUPLICATE_SUBMISSION_WINDOW_MS)),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (recentDuplicatePayment) {
+      return this.findOne(creditId);
     }
 
     // 💡 MANEJO DE SOBREPAGOS
