@@ -773,68 +773,109 @@ export class ProductsService {
     return await this.temporaryProductsRepository.save(temporaryProduct);
   }
 
-  async completeTemporaryProductBySupervisor(
+  /**
+   * Completa la revisión de un producto temporal para UN rol (supervisor o
+   * digitador) de forma independiente. Cada rol confirma por su lado - que
+   * uno complete NO marca al otro como completado. El producto real (fila en
+   * "products") se crea una sola vez, sin importar qué rol la dispare primero;
+   * el segundo rol en completar solo registra su propia confirmación.
+   * El status pasa a COMPLETED únicamente cuando AMBOS roles ya confirmaron.
+   */
+  async completeTemporaryProductByReviewer(
     id: string,
-    supervisorId: string,
+    reviewerId: string,
+    reviewerRole: UserRole.SUPERVISOR | UserRole.DIGITADOR,
     notes?: string,
     barcode?: string
   ): Promise<TemporaryProduct> {
     const temporaryProduct = await this.findTemporaryProduct(id);
 
-    if (temporaryProduct.status !== TemporaryProductStatus.PENDING_SUPERVISOR) {
+    if (
+      temporaryProduct.status !== TemporaryProductStatus.PENDING_SUPERVISOR
+    ) {
       throw new NotFoundException(
         `Solo se pueden completar productos temporales en estado pending_supervisor`
       );
     }
 
-    console.log('📦 Completing temporary product by supervisor:', {
+    const alreadyCompletedByThisRole =
+      reviewerRole === UserRole.SUPERVISOR
+        ? !!temporaryProduct.completedBySupervisor
+        : !!temporaryProduct.completedByDigitador;
+
+    if (alreadyCompletedByThisRole) {
+      throw new NotFoundException(
+        `Ya completaste esta tarea anteriormente como ${reviewerRole}`
+      );
+    }
+
+    console.log(`📦 Completing temporary product by ${reviewerRole}:`, {
       id,
       name: temporaryProduct.name,
       providedBarcode: barcode,
       existingBarcode: temporaryProduct.barcode,
+      productAlreadyExists: !!temporaryProduct.productId,
     });
 
-    // Si se proporciona un barcode, actualizar el campo barcode del producto temporal
-    if (barcode && barcode.trim()) {
-      console.log('🔍 Updating barcode from', temporaryProduct.barcode, 'to', barcode.trim());
+    if (barcode && barcode.trim() && !temporaryProduct.barcode) {
+      console.log('🔍 Setting barcode to', barcode.trim());
       temporaryProduct.barcode = barcode.trim();
     }
 
-    // Crear automáticamente el producto en la tabla products usando los datos del temporary product
-    console.log('🚀 Auto-registering product in products table...');
+    // El producto real solo se crea la PRIMERA vez que alguien completa
+    // (sin importar el rol). Si el otro rol ya lo creó antes, no se duplica.
+    if (!temporaryProduct.productId) {
+      console.log('🚀 Auto-registering product in products table...');
 
-    const newProduct = this.productsRepository.create({
-      description: temporaryProduct.name, // El nombre del temporal es la descripción del producto
-      barcode: temporaryProduct.barcode || '', // Usar el barcode actualizado o vacío si no hay
-      precioA: temporaryProduct.precioA || 0,
-      precioB: temporaryProduct.precioB || 0,
-      precioC: temporaryProduct.precioC || 0,
-      costo: temporaryProduct.costo || 0,
-      iva: temporaryProduct.iva || 0,
-      isActive: true,
-    });
+      const newProduct = this.productsRepository.create({
+        description: temporaryProduct.name,
+        barcode: temporaryProduct.barcode || '',
+        precioA: temporaryProduct.precioA || 0,
+        precioB: temporaryProduct.precioB || 0,
+        precioC: temporaryProduct.precioC || 0,
+        costo: temporaryProduct.costo || 0,
+        iva: temporaryProduct.iva || 0,
+        isActive: true,
+      });
 
-    const savedRealProduct = await this.productsRepository.save(newProduct);
+      const savedRealProduct = await this.productsRepository.save(newProduct);
+      temporaryProduct.productId = savedRealProduct.id;
 
-    console.log('✅ Product auto-registered successfully:', {
-      productId: savedRealProduct.id,
-      description: savedRealProduct.description,
-      barcode: savedRealProduct.barcode,
-    });
+      console.log('✅ Product auto-registered successfully:', {
+        productId: savedRealProduct.id,
+        description: savedRealProduct.description,
+        barcode: savedRealProduct.barcode,
+      });
+    } else if (barcode && barcode.trim()) {
+      // El producto real ya existe (lo creó el otro rol): si este barcode es
+      // nuevo, lo aplicamos también sobre el producto real.
+      await this.productsRepository.update(temporaryProduct.productId, {
+        barcode: temporaryProduct.barcode,
+      });
+    }
 
-    // Guardar el productId en el producto temporal
-    temporaryProduct.productId = savedRealProduct.id;
+    // Marcar completado SOLO para este rol
+    if (reviewerRole === UserRole.SUPERVISOR) {
+      temporaryProduct.completedBySupervisor = reviewerId;
+      temporaryProduct.completedBySupervisorAt = new Date();
+    } else {
+      temporaryProduct.completedByDigitador = reviewerId;
+      temporaryProduct.completedByDigitadorAt = new Date();
+    }
 
-    // Marcar como completado por supervisor
-    temporaryProduct.status = TemporaryProductStatus.COMPLETED;
-    temporaryProduct.completedBySupervisor = supervisorId;
-    temporaryProduct.completedBySupervisorAt = new Date();
-
-    // Agregar notas del supervisor si las hay
     if (notes) {
+      const roleLabel = reviewerRole === UserRole.SUPERVISOR ? 'supervisor' : 'digitador';
       temporaryProduct.notes = temporaryProduct.notes
-        ? `${temporaryProduct.notes}\n\nNota del supervisor: ${notes}`
-        : `Nota del supervisor: ${notes}`;
+        ? `${temporaryProduct.notes}\n\nNota del ${roleLabel}: ${notes}`
+        : `Nota del ${roleLabel}: ${notes}`;
+    }
+
+    // Solo queda COMPLETED cuando AMBOS roles ya confirmaron su parte
+    const bothRolesDone =
+      !!temporaryProduct.completedBySupervisor &&
+      !!temporaryProduct.completedByDigitador;
+    if (bothRolesDone) {
+      temporaryProduct.status = TemporaryProductStatus.COMPLETED;
     }
 
     await this.temporaryProductsRepository.save(temporaryProduct);
@@ -842,45 +883,58 @@ export class ProductsService {
     // Reload product with user relations
     const savedProduct = await this.temporaryProductsRepository.findOne({
       where: { id: temporaryProduct.id },
-      relations: ['completedByAdminUser', 'completedBySupervisorUser'],
+      relations: [
+        'completedByAdminUser',
+        'completedBySupervisorUser',
+        'completedByDigitadorUser',
+      ],
     });
 
-    console.log('✅ Producto temporal completado:', {
+    console.log('✅ Producto temporal - confirmación registrada:', {
       id: savedProduct.id,
       name: savedProduct.name,
       completedBySupervisor: savedProduct.completedBySupervisor,
-      hasCompletedBySupervisorUser: !!savedProduct.completedBySupervisorUser,
-      username: savedProduct.completedBySupervisorUser?.username,
+      completedByDigitador: savedProduct.completedByDigitador,
+      bothRolesDone,
     });
 
-    // Notificar al admin que creó el producto temporal
-    await this.notificationsService.createNotification(
-      temporaryProduct.createdBy,
-      "Producto Nuevo Registrado y completado",
-      `El producto "${savedProduct.name}" ha sido registrado por el supervisor como aplicado correctamente en el sistema.`,
-      NotificationType.TEMPORARY_PRODUCT_COMPLETED,
-      undefined,
-      undefined,
-      savedProduct.id
-    );
+    // Notificar al admin que creó el producto temporal SOLO cuando ambos
+    // roles ya confirmaron (antes se notificaba con la primera confirmación,
+    // lo cual era engañoso porque el otro rol todavía tenía pendiente su parte)
+    if (bothRolesDone) {
+      await this.notificationsService.createNotification(
+        temporaryProduct.createdBy,
+        "Producto Nuevo Registrado y completado",
+        `El producto "${savedProduct.name}" fue confirmado por supervisor y digitador como aplicado correctamente en el sistema.`,
+        NotificationType.TEMPORARY_PRODUCT_COMPLETED,
+        undefined,
+        undefined,
+        savedProduct.id
+      );
+    }
 
     return savedProduct;
   }
 
   /**
-   * Update barcode of existing product when supervisor completes task
+   * Update barcode of existing product when supervisor/digitador completes task
    * This is for when admin creates a product WITHOUT barcode
-   * and supervisor adds it during review
+   * and supervisor o digitador lo agrega durante su revisión.
+   *
+   * Independencia por rol: igual que completeTemporaryProductByReviewer, cada
+   * rol confirma por separado y solo pasa a COMPLETED cuando ambos lo hicieron.
    */
   async updateProductBarcodeFromTemporary(
     temporaryProductId: string,
-    supervisorId: string,
+    reviewerId: string,
     barcode: string,
+    reviewerRole: UserRole.SUPERVISOR | UserRole.DIGITADOR = UserRole.SUPERVISOR,
     notes?: string
   ): Promise<{ product: Product; temporaryProduct: TemporaryProduct }> {
     console.log('🔄 Updating product barcode from temporary:', {
       temporaryProductId,
-      supervisorId,
+      reviewerId,
+      reviewerRole,
       barcode,
     });
 
@@ -890,7 +944,18 @@ export class ProductsService {
     // 2. Check if it has a linked real product
     if (!temporaryProduct.productId) {
       throw new NotFoundException(
-        'This temporary product is not linked to a real product. Use completeTemporaryProductBySupervisor instead.'
+        'This temporary product is not linked to a real product. Use completeTemporaryProductByReviewer instead.'
+      );
+    }
+
+    const alreadyCompletedByThisRole =
+      reviewerRole === UserRole.SUPERVISOR
+        ? !!temporaryProduct.completedBySupervisor
+        : !!temporaryProduct.completedByDigitador;
+
+    if (alreadyCompletedByThisRole) {
+      throw new NotFoundException(
+        `Ya completaste esta tarea anteriormente como ${reviewerRole}`
       );
     }
 
@@ -918,17 +983,29 @@ export class ProductsService {
 
     console.log('✅ Product barcode updated successfully');
 
-    // 5. Mark temporary product as completed by supervisor
-    temporaryProduct.status = TemporaryProductStatus.COMPLETED;
-    temporaryProduct.completedBySupervisor = supervisorId;
-    temporaryProduct.completedBySupervisorAt = new Date();
-    temporaryProduct.barcode = barcode.trim(); // Update barcode in temporary too
+    // 5. Marcar completado SOLO para este rol
+    if (reviewerRole === UserRole.SUPERVISOR) {
+      temporaryProduct.completedBySupervisor = reviewerId;
+      temporaryProduct.completedBySupervisorAt = new Date();
+    } else {
+      temporaryProduct.completedByDigitador = reviewerId;
+      temporaryProduct.completedByDigitadorAt = new Date();
+    }
+    temporaryProduct.barcode = barcode.trim();
+
+    const bothRolesDone =
+      !!temporaryProduct.completedBySupervisor &&
+      !!temporaryProduct.completedByDigitador;
+    if (bothRolesDone) {
+      temporaryProduct.status = TemporaryProductStatus.COMPLETED;
+    }
 
     // Add notes if provided
     if (notes && notes.trim()) {
+      const roleLabel = reviewerRole === UserRole.SUPERVISOR ? 'supervisor' : 'digitador';
       temporaryProduct.notes = temporaryProduct.notes
-        ? `${temporaryProduct.notes}\n\nNota del supervisor: ${notes}`
-        : `Nota del supervisor: ${notes}`;
+        ? `${temporaryProduct.notes}\n\nNota del ${roleLabel}: ${notes}`
+        : `Nota del ${roleLabel}: ${notes}`;
     }
 
     await this.temporaryProductsRepository.save(temporaryProduct);
@@ -936,25 +1013,28 @@ export class ProductsService {
     // 6. Reload both with relations
     const savedTemporary = await this.temporaryProductsRepository.findOne({
       where: { id: temporaryProduct.id },
-      relations: ['completedByAdminUser', 'completedBySupervisorUser'],
+      relations: ['completedByAdminUser', 'completedBySupervisorUser', 'completedByDigitadorUser'],
     });
 
-    console.log('✅ Temporary product completed:', {
+    console.log('✅ Temporary product - confirmación registrada:', {
       id: savedTemporary.id,
       name: savedTemporary.name,
       productId: savedTemporary.productId,
+      bothRolesDone,
     });
 
-    // 7. Notify the admin who created it
-    await this.notificationsService.createNotification(
-      temporaryProduct.createdBy,
-      "Código de Barras Agregado",
-      `El supervisor agregó el código de barras "${barcode}" al producto "${product.description}".`,
-      NotificationType.TEMPORARY_PRODUCT_COMPLETED,
-      product.id,
-      undefined,
-      savedTemporary.id
-    );
+    // 7. Notify the admin who created it (solo cuando ambos roles ya confirmaron)
+    if (bothRolesDone) {
+      await this.notificationsService.createNotification(
+        temporaryProduct.createdBy,
+        "Código de Barras Agregado",
+        `Se confirmó el código de barras "${barcode}" para el producto "${product.description}" (supervisor y digitador).`,
+        NotificationType.TEMPORARY_PRODUCT_COMPLETED,
+        product.id,
+        undefined,
+        savedTemporary.id
+      );
+    }
 
     return { product: updatedProduct, temporaryProduct: savedTemporary };
   }
@@ -962,17 +1042,24 @@ export class ProductsService {
   /**
    * Update barcode of an existing product (for products table, not temporary_products)
    * This is used when admin creates a product directly in products table WITHOUT barcode
-   * and supervisor adds it when completing the task
+   * and supervisor o digitador lo agrega al completar su revisión.
+   *
+   * Independencia por rol: si hay un producto temporal ligado, cada rol
+   * confirma por separado (igual que completeTemporaryProductByReviewer) y
+   * solo se completan las tareas (ProductUpdateTask) que pertenecen al rol
+   * que está llamando - nunca las del otro rol.
    */
   async updateProductBarcode(
     productId: string,
     barcode: string,
-    supervisorId: string,
+    reviewerId: string,
+    reviewerRole: UserRole.SUPERVISOR | UserRole.DIGITADOR = UserRole.SUPERVISOR,
   ): Promise<Product> {
     console.log('🔄 Updating product barcode directly in products table:', {
       productId,
       barcode,
-      supervisorId,
+      reviewerId,
+      reviewerRole,
     });
 
     // Find the product in products table
@@ -1006,32 +1093,62 @@ export class ProductsService {
     });
 
     if (temporaryProduct) {
-      console.log('📋 Found temporary product to complete:', temporaryProduct.id);
+      const alreadyCompletedByThisRole =
+        reviewerRole === UserRole.SUPERVISOR
+          ? !!temporaryProduct.completedBySupervisor
+          : !!temporaryProduct.completedByDigitador;
 
-      // Mark temporary product as completed
-      temporaryProduct.status = TemporaryProductStatus.COMPLETED;
-      temporaryProduct.completedBySupervisor = supervisorId;
-      temporaryProduct.completedBySupervisorAt = new Date();
-      temporaryProduct.barcode = barcode.trim(); // Update barcode in temp product too
+      if (!alreadyCompletedByThisRole) {
+        console.log('📋 Found temporary product to complete:', temporaryProduct.id);
 
-      await this.temporaryProductsRepository.save(temporaryProduct);
-      console.log('✅ Temporary product marked as completed');
+        if (reviewerRole === UserRole.SUPERVISOR) {
+          temporaryProduct.completedBySupervisor = reviewerId;
+          temporaryProduct.completedBySupervisorAt = new Date();
+        } else {
+          temporaryProduct.completedByDigitador = reviewerId;
+          temporaryProduct.completedByDigitadorAt = new Date();
+        }
+        temporaryProduct.barcode = barcode.trim();
+
+        // Solo queda COMPLETED cuando AMBOS roles ya confirmaron
+        const bothRolesDone =
+          !!temporaryProduct.completedBySupervisor &&
+          !!temporaryProduct.completedByDigitador;
+        if (bothRolesDone) {
+          temporaryProduct.status = TemporaryProductStatus.COMPLETED;
+        }
+
+        await this.temporaryProductsRepository.save(temporaryProduct);
+        console.log(`✅ Temporary product confirmed by ${reviewerRole}`, { bothRolesDone });
+      } else {
+        console.log(`ℹ️ Este ${reviewerRole} ya había confirmado este producto temporal`);
+      }
     } else {
       console.log('ℹ️ No temporary product found for this product');
     }
 
-    // Find and complete all pending tasks for this product
-    const pendingTasks = await this.tasksService.getPendingTasksByProductId(productId);
+    // Completar SOLO las tareas (ProductUpdateTask) asignadas a este mismo
+    // rol. Antes se completaban TODAS las tareas pendientes del producto sin
+    // importar el rol, lo que terminaba completando tareas del otro rol.
+    const pendingTasks = (
+      await this.tasksService.getPendingTasksByProductId(productId)
+    ).filter((task) => {
+      const taskRole =
+        task.assignedRole === AssignedRole.DIGITADOR
+          ? UserRole.DIGITADOR
+          : UserRole.SUPERVISOR;
+      return taskRole === reviewerRole;
+    });
 
     if (pendingTasks && pendingTasks.length > 0) {
-      console.log(`📝 Found ${pendingTasks.length} pending task(s) to complete`);
+      console.log(`📝 Found ${pendingTasks.length} pending task(s) to complete for ${reviewerRole}`);
 
       for (const task of pendingTasks) {
         try {
           await this.tasksService.completeTask(
             task.id,
             { notes: `Código de barras agregado: ${barcode}` },
-            supervisorId,
+            reviewerId,
           );
           console.log(`✅ Task ${task.id} completed`);
         } catch (error) {
@@ -1040,7 +1157,7 @@ export class ProductsService {
         }
       }
     } else {
-      console.log('ℹ️ No pending tasks found for this product');
+      console.log('ℹ️ No pending tasks found for this role on this product');
     }
 
     return updatedProduct;

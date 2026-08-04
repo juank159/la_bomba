@@ -82,6 +82,20 @@ export class TemporaryProduct {
   @Column({ name: 'completed_by_supervisor_at', nullable: true })
   completedBySupervisorAt: Date;
 
+  // Confirmación independiente del digitador. Supervisor y digitador
+  // confirman por separado - que uno complete no marca al otro como
+  // completado. El producto temporal solo pasa a status=COMPLETED cuando
+  // AMBOS confirmaron.
+  @Column({ name: 'completed_by_digitador', nullable: true })
+  completedByDigitador: string;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'completed_by_digitador' })
+  completedByDigitadorUser: User;
+
+  @Column({ name: 'completed_by_digitador_at', nullable: true })
+  completedByDigitadorAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 

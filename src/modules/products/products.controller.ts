@@ -47,6 +47,20 @@ export class ProductsController {
     return omitCosto(data);
   }
 
+  /**
+   * Los endpoints de revisión de productos temporales aceptan SUPERVISOR,
+   * DIGITADOR y ADMIN. Como solo hay dos "carriles" independientes de
+   * confirmación (completedBySupervisor / completedByDigitador), cuando
+   * quien llama es ADMIN se lo trata como supervisor para efectos de
+   * completar (mismo comportamiento que tenía el endpoint antes de este
+   * cambio, cuando admin y supervisor compartían el mismo carril).
+   */
+  private effectiveReviewerRole(
+    role: UserRole,
+  ): UserRole.SUPERVISOR | UserRole.DIGITADOR {
+    return role === UserRole.DIGITADOR ? UserRole.DIGITADOR : UserRole.SUPERVISOR;
+  }
+
   @Post()
   @Roles(UserRole.ADMIN)
   create(@Body() createProductDto: CreateProductDto) {
@@ -148,17 +162,18 @@ export class ProductsController {
   }
 
   @Patch("by-id/:id/barcode")
-  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  @Roles(UserRole.SUPERVISOR, UserRole.DIGITADOR, UserRole.ADMIN)
   async updateProductBarcode(
     @Param("id") productId: string,
     @Body("barcode") barcode: string,
     @Request() req: any,
   ) {
-    const supervisorId = req.user.userId;
+    const reviewerId = req.user.userId;
+    const reviewerRole = this.effectiveReviewerRole(req.user?.role);
     console.log('🔄 PATCH /products/by-id/' + productId + '/barcode called');
     console.log('📦 Barcode to update:', barcode);
-    console.log('👤 Supervisor ID:', supervisorId);
-    const updated = await this.productsService.updateProductBarcode(productId, barcode, supervisorId);
+    console.log('👤 Reviewer:', { reviewerId, reviewerRole });
+    const updated = await this.productsService.updateProductBarcode(productId, barcode, reviewerId, reviewerRole);
     return this.stripCostoForRole(updated, req.user?.role);
   }
 
@@ -218,22 +233,25 @@ export class ProductsController {
   }
 
   @Post("temporary/:id/complete-supervisor")
-  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
-  async completeTemporaryProductBySupervisor(
+  @Roles(UserRole.SUPERVISOR, UserRole.DIGITADOR, UserRole.ADMIN)
+  async completeTemporaryProductByReviewer(
     @Param("id") id: string,
     @Body() body: { notes?: string; barcode?: string },
     @Request() req: any,
   ) {
-    const supervisorId = req.user.userId;
-    console.log('🔍 Complete temporary product by supervisor:', {
+    const reviewerId = req.user.userId;
+    const reviewerRole = this.effectiveReviewerRole(req.user?.role);
+    console.log('🔍 Complete temporary product by reviewer:', {
       id,
-      supervisorId,
+      reviewerId,
+      reviewerRole,
       notes: body.notes,
       barcode: body.barcode,
     });
-    const result = await this.productsService.completeTemporaryProductBySupervisor(
+    const result = await this.productsService.completeTemporaryProductByReviewer(
       id,
-      supervisorId,
+      reviewerId,
+      reviewerRole,
       body.notes,
       body.barcode,
     );
@@ -241,23 +259,26 @@ export class ProductsController {
   }
 
   @Post("temporary/:id/update-barcode")
-  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  @Roles(UserRole.SUPERVISOR, UserRole.DIGITADOR, UserRole.ADMIN)
   async updateProductBarcodeFromTemporary(
     @Param("id") temporaryProductId: string,
     @Body() body: { barcode: string; notes?: string },
     @Request() req: any,
   ) {
-    const supervisorId = req.user.userId;
+    const reviewerId = req.user.userId;
+    const reviewerRole = this.effectiveReviewerRole(req.user?.role);
     console.log('🔍 Update product barcode from temporary:', {
       temporaryProductId,
-      supervisorId,
+      reviewerId,
+      reviewerRole,
       barcode: body.barcode,
       notes: body.notes,
     });
     const result = await this.productsService.updateProductBarcodeFromTemporary(
       temporaryProductId,
-      supervisorId,
+      reviewerId,
       body.barcode,
+      reviewerRole,
       body.notes,
     );
     return {
