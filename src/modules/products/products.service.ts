@@ -311,6 +311,15 @@ export class ProductsService {
    *
    * Las tareas son independientes: que supervisor complete la suya no afecta la del
    * digitador y viceversa.
+   *
+   * IMPORTANTE - Costo es exclusivo del administrador: "costo" NO forma parte de
+   * priceFields a propósito. El costo es información financiera sensible (margen
+   * real del negocio) que ni supervisor ni digitador deben ver, ni siquiera como
+   * "el campo costo cambió" en la descripción de una tarea. Por eso:
+   *   - Un cambio de SOLO costo no genera ninguna tarea para supervisor/digitador.
+   *   - Si costo cambia junto con precioA/B/C, la tarea de precio se sigue creando
+   *     (porque sí necesitan saber que cambió el precio de venta), pero el payload
+   *     (oldValue/newValue) y la descripción nunca incluyen el campo costo.
    */
   private async createUpdateTask(
     oldValues: any,
@@ -319,7 +328,7 @@ export class ProductsService {
     updatedById: string,
     adminNotes?: string
   ): Promise<void> {
-    const priceFields = ["precioA", "precioB", "precioC", "costo"];
+    const priceFields = ["precioA", "precioB", "precioC"];
 
     const priceChanges = priceFields.filter(
       (field) =>
@@ -367,8 +376,9 @@ export class ProductsService {
     const tasksToCreate: TaskSpec[] = [];
 
     // --- Tarea para SUPERVISOR (solo si cambió precio) ---
-    // Payload: SOLO campos de precio (precioA/B/C, costo). Nombre/IVA/barcode
-    // pertenecen al digitador y NO deben aparecer en el detalle del supervisor.
+    // Payload: SOLO campos de precio de venta (precioA/B/C). Nombre/IVA/barcode
+    // pertenecen al digitador y costo es exclusivo del admin - ninguno de los
+    // dos debe aparecer en el detalle del supervisor.
     if (priceChanges.length > 0) {
       const { oldV, newV } = buildScopedPayload(priceFields);
       tasksToCreate.push({
@@ -674,7 +684,10 @@ export class ProductsService {
         ],
       });
 
-      // Construir mensaje detallado con precios e IVA
+      // Construir mensaje detallado con precios e IVA.
+      // NO se incluye "Costo" a propósito: esta notificación llega a
+      // supervisor Y digitador, y el costo es información financiera
+      // exclusiva del administrador.
       const priceDetails = [];
       if (savedProduct.precioA !== null && savedProduct.precioA !== undefined) {
         priceDetails.push(`Precio A: $${Number(savedProduct.precioA).toFixed(2)}`);
@@ -684,9 +697,6 @@ export class ProductsService {
       }
       if (savedProduct.precioC !== null && savedProduct.precioC !== undefined) {
         priceDetails.push(`Precio C: $${Number(savedProduct.precioC).toFixed(2)}`);
-      }
-      if (savedProduct.costo !== null && savedProduct.costo !== undefined) {
-        priceDetails.push(`Costo: $${Number(savedProduct.costo).toFixed(2)}`);
       }
 
       const ivaText =

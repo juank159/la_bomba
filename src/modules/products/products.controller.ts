@@ -25,6 +25,28 @@ import { UserRole } from "../users/entities/user.entity";
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
+  /**
+   * Quita el campo "costo" de la respuesta cuando quien la pide no es admin.
+   * El costo es información financiera sensible (margen real del negocio):
+   * ocultarlo solo en el frontend no alcanza, porque cualquiera puede seguir
+   * viéndolo inspeccionando la respuesta de red. Esta es la protección real.
+   * Acepta tanto un solo objeto (Product/TemporaryProduct) como un arreglo.
+   */
+  private stripCostoForRole<T>(data: T, role: UserRole): T {
+    if (role === UserRole.ADMIN) return data;
+
+    const omitCosto = (item: any) => {
+      if (!item || typeof item !== "object") return item;
+      const { costo, ...rest } = item;
+      return rest;
+    };
+
+    if (Array.isArray(data)) {
+      return (data as any[]).map(omitCosto) as unknown as T;
+    }
+    return omitCosto(data);
+  }
+
   @Post()
   @Roles(UserRole.ADMIN)
   create(@Body() createProductDto: CreateProductDto) {
@@ -47,10 +69,11 @@ export class ProductsController {
 
   @Get()
   // Los empleados, supervisores y administradores pueden ver productos
-  findAll(
+  async findAll(
     @Query("search") search?: string,
     @Query("page") page?: string,
-    @Query("limit") limit?: string
+    @Query("limit") limit?: string,
+    @Request() req?: any
   ) {
     try {
       // Convert string query params to numbers
@@ -60,7 +83,8 @@ export class ProductsController {
       console.log("FindAll called with:", { search, page: pageNum, limit: limitNum });
       console.log("Original types:", { pageType: typeof page, limitType: typeof limit });
 
-      return this.productsService.findAll(search, pageNum, limitNum);
+      const results = await this.productsService.findAll(search, pageNum, limitNum);
+      return this.stripCostoForRole(results, req?.user?.role);
     } catch (error) {
       console.error("Error in findAll controller:", error);
       console.error("Full error:", error);
@@ -70,19 +94,22 @@ export class ProductsController {
 
   @Get("by-id/:id")
   // Los empleados, supervisores y administradores pueden ver detalles de productos
-  findOne(@Param("id") id: string, @Request() req: any) {
+  async findOne(@Param("id") id: string, @Request() req: any) {
     console.log("🔍 GET /products/by-id/" + id + " called by:", req.user?.role);
     // Los administradores y supervisores pueden ver todos los productos (incluso inactivos)
+    let product: any;
     if (
       req.user?.role === UserRole.ADMIN ||
       req.user?.role === UserRole.SUPERVISOR
     ) {
       console.log("👑 Admin/Supervisor access - using findOneForAdmin");
-      return this.productsService.findOneForAdmin(id);
+      product = await this.productsService.findOneForAdmin(id);
+    } else {
+      // Los empleados solo ven productos activos
+      console.log("👤 Employee access - using findOne (active only)");
+      product = await this.productsService.findOne(id);
     }
-    // Los empleados solo ven productos activos
-    console.log("👤 Employee access - using findOne (active only)");
-    return this.productsService.findOne(id);
+    return this.stripCostoForRole(product, req.user?.role);
   }
 
   @Patch("by-id/:id")
@@ -122,7 +149,7 @@ export class ProductsController {
 
   @Patch("by-id/:id/barcode")
   @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
-  updateProductBarcode(
+  async updateProductBarcode(
     @Param("id") productId: string,
     @Body("barcode") barcode: string,
     @Request() req: any,
@@ -131,7 +158,8 @@ export class ProductsController {
     console.log('🔄 PATCH /products/by-id/' + productId + '/barcode called');
     console.log('📦 Barcode to update:', barcode);
     console.log('👤 Supervisor ID:', supervisorId);
-    return this.productsService.updateProductBarcode(productId, barcode, supervisorId);
+    const updated = await this.productsService.updateProductBarcode(productId, barcode, supervisorId);
+    return this.stripCostoForRole(updated, req.user?.role);
   }
 
   @Delete("by-id/:id")
@@ -161,19 +189,21 @@ export class ProductsController {
 
   @Get("temporary")
   @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.DIGITADOR)
-  findAllTemporaryProducts(@Request() req: any) {
+  async findAllTemporaryProducts(@Request() req: any) {
     console.log('🔍 GET /products/temporary called by:', {
       userId: req.user?.userId,
       username: req.user?.username,
       role: req.user?.role,
     });
-    return this.productsService.findAllTemporaryProducts();
+    const results = await this.productsService.findAllTemporaryProducts();
+    return this.stripCostoForRole(results, req.user?.role);
   }
 
   @Get("temporary/:id")
   @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.DIGITADOR)
-  findTemporaryProduct(@Param("id") id: string) {
-    return this.productsService.findTemporaryProduct(id);
+  async findTemporaryProduct(@Param("id") id: string, @Request() req: any) {
+    const result = await this.productsService.findTemporaryProduct(id);
+    return this.stripCostoForRole(result, req.user?.role);
   }
 
   @Post("temporary/:id/cancel")
@@ -189,7 +219,7 @@ export class ProductsController {
 
   @Post("temporary/:id/complete-supervisor")
   @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
-  completeTemporaryProductBySupervisor(
+  async completeTemporaryProductBySupervisor(
     @Param("id") id: string,
     @Body() body: { notes?: string; barcode?: string },
     @Request() req: any,
@@ -201,17 +231,18 @@ export class ProductsController {
       notes: body.notes,
       barcode: body.barcode,
     });
-    return this.productsService.completeTemporaryProductBySupervisor(
+    const result = await this.productsService.completeTemporaryProductBySupervisor(
       id,
       supervisorId,
       body.notes,
       body.barcode,
     );
+    return this.stripCostoForRole(result, req.user?.role);
   }
 
   @Post("temporary/:id/update-barcode")
   @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
-  updateProductBarcodeFromTemporary(
+  async updateProductBarcodeFromTemporary(
     @Param("id") temporaryProductId: string,
     @Body() body: { barcode: string; notes?: string },
     @Request() req: any,
@@ -223,12 +254,16 @@ export class ProductsController {
       barcode: body.barcode,
       notes: body.notes,
     });
-    return this.productsService.updateProductBarcodeFromTemporary(
+    const result = await this.productsService.updateProductBarcodeFromTemporary(
       temporaryProductId,
       supervisorId,
       body.barcode,
       body.notes,
     );
+    return {
+      product: this.stripCostoForRole(result.product, req.user?.role),
+      temporaryProduct: this.stripCostoForRole(result.temporaryProduct, req.user?.role),
+    };
   }
 
   @Delete("temporary/:id")
