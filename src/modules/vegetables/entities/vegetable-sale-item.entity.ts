@@ -30,7 +30,7 @@ export class VegetableSaleItem {
   pricingType: PricingType;
 
   // Kilogramos vendidos (solo para items pesados por báscula)
-  @Column('decimal', { precision: 10, scale: 3, nullable: true })
+  @Column('decimal', { name: 'weight_kg', precision: 10, scale: 3, nullable: true })
   weightKg: number;
 
   // Unidades vendidas (solo para items de precio fijo)
