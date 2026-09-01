@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, QueryFailedError } from 'typeorm';
 import { VegetableItem, PricingType } from './entities/vegetable-item.entity';
+import { VegetableCategory } from './entities/vegetable-category.entity';
 import { VegetableSale } from './entities/vegetable-sale.entity';
 import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
 import { CreateVegetableItemDto } from './dto/create-vegetable-item.dto';
 import { UpdateVegetableItemDto } from './dto/update-vegetable-item.dto';
+import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto';
+import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto';
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 
 @Injectable()
@@ -13,11 +16,66 @@ export class VegetablesService {
   constructor(
     @InjectRepository(VegetableItem)
     private itemsRepository: Repository<VegetableItem>,
+    @InjectRepository(VegetableCategory)
+    private categoriesRepository: Repository<VegetableCategory>,
     @InjectRepository(VegetableSale)
     private salesRepository: Repository<VegetableSale>,
     @InjectRepository(VegetableSaleItem)
     private saleItemsRepository: Repository<VegetableSaleItem>,
   ) {}
+
+  // ==========================================================================
+  // Categorías (ej. Frutas, Verduras)
+  // ==========================================================================
+
+  async createCategory(dto: CreateVegetableCategoryDto): Promise<VegetableCategory> {
+    try {
+      const category = this.categoriesRepository.create(dto);
+      return await this.categoriesRepository.save(category);
+    } catch (error) {
+      throw this.handleUniqueNameConflict(error, dto.name);
+    }
+  }
+
+  async findAllCategories(includeInactive = false): Promise<VegetableCategory[]> {
+    return this.categoriesRepository.find({
+      where: includeInactive ? {} : { isActive: true },
+      order: { name: 'ASC' },
+    });
+  }
+
+  async findOneCategory(id: string): Promise<VegetableCategory> {
+    const category = await this.categoriesRepository.findOne({ where: { id } });
+    if (!category) {
+      throw new NotFoundException(`Categoría con ID ${id} no encontrada`);
+    }
+    return category;
+  }
+
+  async updateCategory(id: string, dto: UpdateVegetableCategoryDto): Promise<VegetableCategory> {
+    const category = await this.findOneCategory(id);
+    const merged = this.categoriesRepository.merge(category, dto);
+    try {
+      return await this.categoriesRepository.save(merged);
+    } catch (error) {
+      throw this.handleUniqueNameConflict(error, dto.name ?? category.name);
+    }
+  }
+
+  async removeCategory(id: string): Promise<void> {
+    const category = await this.findOneCategory(id);
+    // Baja lógica: no se borra para no perder la referencia en productos
+    // que ya tienen esta categoría asignada (igual que isActive en items).
+    category.isActive = false;
+    await this.categoriesRepository.save(category);
+  }
+
+  private handleUniqueNameConflict(error: unknown, name: string): Error {
+    if (error instanceof QueryFailedError && (error as any).code === '23505') {
+      return new ConflictException(`Ya existe una categoría llamada "${name}"`);
+    }
+    return error as Error;
+  }
 
   // ==========================================================================
   // Catálogo de verduras
@@ -30,20 +88,25 @@ export class VegetablesService {
     if (dto.pricingType === PricingType.FIXED && !dto.fixedPrice) {
       throw new BadRequestException('Los productos de precio fijo requieren un precio');
     }
+    if (dto.categoryId) {
+      await this.findOneCategory(dto.categoryId);
+    }
 
     const item = this.itemsRepository.create(dto);
-    return this.itemsRepository.save(item);
+    const saved = await this.itemsRepository.save(item);
+    return this.findOneItem(saved.id);
   }
 
   async findAllItems(includeInactive = false): Promise<VegetableItem[]> {
     return this.itemsRepository.find({
       where: includeInactive ? {} : { isActive: true },
+      relations: ['category'],
       order: { name: 'ASC' },
     });
   }
 
   async findOneItem(id: string): Promise<VegetableItem> {
-    const item = await this.itemsRepository.findOne({ where: { id } });
+    const item = await this.itemsRepository.findOne({ where: { id }, relations: ['category'] });
     if (!item) {
       throw new NotFoundException(`Producto de verduras con ID ${id} no encontrado`);
     }
@@ -52,6 +115,9 @@ export class VegetablesService {
 
   async updateItem(id: string, dto: UpdateVegetableItemDto): Promise<VegetableItem> {
     const item = await this.findOneItem(id);
+    if (dto.categoryId) {
+      await this.findOneCategory(dto.categoryId);
+    }
     const merged = this.itemsRepository.merge(item, dto);
 
     if (merged.pricingType === PricingType.WEIGHT && !merged.pricePerKg) {
@@ -61,7 +127,8 @@ export class VegetablesService {
       throw new BadRequestException('Los productos de precio fijo requieren un precio');
     }
 
-    return this.itemsRepository.save(merged);
+    const saved = await this.itemsRepository.save(merged);
+    return this.findOneItem(saved.id);
   }
 
   async removeItem(id: string): Promise<void> {

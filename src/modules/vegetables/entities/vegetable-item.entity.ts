@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
+import { VegetableCategory } from './vegetable-category.entity';
 
 export enum PricingType {
   // Se vende por peso: el total sale de multiplicar pricePerKg x el peso que
@@ -15,6 +24,13 @@ export class VegetableItem {
 
   @Column()
   name: string;
+
+  @ManyToOne(() => VegetableCategory, { nullable: true })
+  @JoinColumn({ name: 'category_id' })
+  category: VegetableCategory;
+
+  @Column({ name: 'category_id', nullable: true })
+  categoryId: string;
 
   @Column({
     type: 'enum',

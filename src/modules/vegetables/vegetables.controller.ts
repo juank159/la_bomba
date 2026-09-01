@@ -13,6 +13,8 @@ import {
 import { VegetablesService } from './vegetables.service';
 import { CreateVegetableItemDto } from './dto/create-vegetable-item.dto';
 import { UpdateVegetableItemDto } from './dto/update-vegetable-item.dto';
+import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto';
+import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto';
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -24,6 +26,33 @@ import { UserRole } from '../users/entities/user.entity';
 @Roles(UserRole.ADMIN, UserRole.VERDULERO)
 export class VegetablesController {
   constructor(private readonly vegetablesService: VegetablesService) {}
+
+  // ---- Categorías ----
+
+  @Post('categories')
+  createCategory(@Body() dto: CreateVegetableCategoryDto) {
+    return this.vegetablesService.createCategory(dto);
+  }
+
+  @Get('categories')
+  findAllCategories(@Query('includeInactive') includeInactive?: string) {
+    return this.vegetablesService.findAllCategories(includeInactive === 'true');
+  }
+
+  @Get('categories/:id')
+  findOneCategory(@Param('id') id: string) {
+    return this.vegetablesService.findOneCategory(id);
+  }
+
+  @Patch('categories/:id')
+  updateCategory(@Param('id') id: string, @Body() dto: UpdateVegetableCategoryDto) {
+    return this.vegetablesService.updateCategory(id, dto);
+  }
+
+  @Delete('categories/:id')
+  removeCategory(@Param('id') id: string) {
+    return this.vegetablesService.removeCategory(id);
+  }
 
   // ---- Catálogo ----
 

@@ -18,6 +18,10 @@ export class CreateVegetableItemDto {
   @IsEnum(PricingType)
   pricingType: PricingType;
 
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
   // Requerido solo si pricingType = WEIGHT
   @ValidateIf((dto) => dto.pricingType === PricingType.WEIGHT)
   @IsNumber()

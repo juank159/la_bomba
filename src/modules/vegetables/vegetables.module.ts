@@ -3,11 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { VegetablesController } from './vegetables.controller';
 import { VegetablesService } from './vegetables.service';
 import { VegetableItem } from './entities/vegetable-item.entity';
+import { VegetableCategory } from './entities/vegetable-category.entity';
 import { VegetableSale } from './entities/vegetable-sale.entity';
 import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([VegetableItem, VegetableSale, VegetableSaleItem])],
+  imports: [
+    TypeOrmModule.forFeature([VegetableItem, VegetableCategory, VegetableSale, VegetableSaleItem]),
+  ],
   controllers: [VegetablesController],
   providers: [VegetablesService],
   exports: [VegetablesService],
