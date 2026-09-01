@@ -43,12 +43,15 @@ export class InvoicesService {
     let subtotal = 0;
     let tax = 0;
 
+    // precioA ya incluye el IVA, así que el IVA se EXTRAE del precio de venta
+    // (no se suma encima). El total de la línea es siempre unitPrice * quantity.
     const itemsData = dto.items.map(item => {
       const product = productsById.get(item.productId)!;
       const unitPrice = Number(product.precioA);
       const ivaPercent = Number(product.iva) || 0;
-      const lineSubtotal = unitPrice * item.quantity;
-      const lineTax = lineSubtotal * (ivaPercent / 100);
+      const lineTotal = unitPrice * item.quantity;
+      const lineTax = lineTotal - lineTotal / (1 + ivaPercent / 100);
+      const lineSubtotal = lineTotal - lineTax;
 
       subtotal += lineSubtotal;
       tax += lineTax;
@@ -69,7 +72,7 @@ export class InvoicesService {
       paymentMethodId: dto.paymentMethodId,
       subtotal,
       tax,
-      total: subtotal + tax,
+      total: subtotal + tax, // = suma de unitPrice*quantity (el IVA ya estaba incluido ahí)
       status: InvoiceStatus.COMPLETED,
       createdBy: username,
     });

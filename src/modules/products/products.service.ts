@@ -1,11 +1,12 @@
 import {
   Injectable,
   NotFoundException,
+  ConflictException,
   Inject,
   forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, Like, ILike } from "typeorm";
+import { Repository, Like, ILike, QueryFailedError } from "typeorm";
 import { Product } from "./entities/product.entity";
 import {
   TemporaryProduct,
@@ -978,8 +979,33 @@ export class ProductsService {
     });
 
     // 4. Update the product's barcode
-    product.barcode = barcode.trim();
-    const updatedProduct = await this.productsRepository.save(product);
+    const trimmedBarcode = barcode.trim();
+
+    if (trimmedBarcode !== product.barcode) {
+      const conflictingProduct = await this.productsRepository.findOne({
+        where: { barcode: trimmedBarcode },
+      });
+
+      if (conflictingProduct && conflictingProduct.id !== product.id) {
+        throw new ConflictException(
+          `El código de barras ${trimmedBarcode} ya pertenece a otro producto: "${conflictingProduct.description}". Verifica el código antes de continuar.`,
+        );
+      }
+    }
+
+    product.barcode = trimmedBarcode;
+
+    let updatedProduct: Product;
+    try {
+      updatedProduct = await this.productsRepository.save(product);
+    } catch (error) {
+      if (error instanceof QueryFailedError && (error as any).code === '23505') {
+        throw new ConflictException(
+          `El código de barras ${trimmedBarcode} ya pertenece a otro producto. Verifica el código antes de continuar.`,
+        );
+      }
+      throw error;
+    }
 
     console.log('✅ Product barcode updated successfully');
 
@@ -1079,8 +1105,33 @@ export class ProductsService {
     });
 
     // Update the product's barcode
-    product.barcode = barcode.trim();
-    const updatedProduct = await this.productsRepository.save(product);
+    const trimmedBarcode = barcode.trim();
+
+    if (trimmedBarcode !== product.barcode) {
+      const conflictingProduct = await this.productsRepository.findOne({
+        where: { barcode: trimmedBarcode },
+      });
+
+      if (conflictingProduct && conflictingProduct.id !== productId) {
+        throw new ConflictException(
+          `El código de barras ${trimmedBarcode} ya pertenece a otro producto: "${conflictingProduct.description}". Verifica el código antes de continuar.`,
+        );
+      }
+    }
+
+    product.barcode = trimmedBarcode;
+
+    let updatedProduct: Product;
+    try {
+      updatedProduct = await this.productsRepository.save(product);
+    } catch (error) {
+      if (error instanceof QueryFailedError && (error as any).code === '23505') {
+        throw new ConflictException(
+          `El código de barras ${trimmedBarcode} ya pertenece a otro producto. Verifica el código antes de continuar.`,
+        );
+      }
+      throw error;
+    }
 
     console.log('✅ Product barcode updated successfully in products table');
 

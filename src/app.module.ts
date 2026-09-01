@@ -14,6 +14,7 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { IncomesModule } from './modules/incomes/incomes.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
+import { VegetablesModule } from './modules/vegetables/vegetables.module';
 import { HealthModule } from './health/health.module';
 import { createDatabaseConfig } from './config/database.config';
 import configuration, { validateConfig } from './config/configuration';
@@ -47,6 +48,7 @@ import configuration, { validateConfig } from './config/configuration';
     NotificationsModule,
     IncomesModule,
     InvoicesModule,
+    VegetablesModule,
   ],
 })
 export class AppModule {}
