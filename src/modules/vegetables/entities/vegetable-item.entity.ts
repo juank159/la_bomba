@@ -50,12 +50,15 @@ export class VegetableItem {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
-  // Foto del producto en base64 (sin el prefijo "data:image/...;base64,"),
-  // comprimida en el cliente antes de subir. Se guarda directo en la fila
-  // porque el backend en Render no tiene almacenamiento de archivos
-  // persistente entre despliegues - no hay dónde guardar un archivo subido.
-  @Column({ type: 'text', nullable: true })
-  image: string;
+  // Foto del producto: se sube a Cloudinary (el cliente manda el JPEG ya
+  // comprimido en base64, el backend lo sube con sus credenciales y guarda
+  // acá la URL pública). imagePublicId se usa solo para poder borrarla de
+  // Cloudinary al reemplazarla o quitarla.
+  @Column({ name: 'image_url', nullable: true })
+  imageUrl: string;
+
+  @Column({ name: 'image_public_id', nullable: true })
+  imagePublicId: string;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

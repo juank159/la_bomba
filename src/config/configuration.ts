@@ -15,6 +15,11 @@ export default () => ({
   },
   environment: process.env.NODE_ENV || 'development',
   allowedOrigins: process.env.ALLOWED_ORIGINS || 'http://localhost:3000',
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
 });
 
 export const validateConfig = (config: Record<string, unknown>) => {

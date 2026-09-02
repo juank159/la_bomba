@@ -13,6 +13,7 @@ import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto'
 import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto';
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
+import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 
 @Injectable()
 export class VegetablesService {
@@ -29,6 +30,7 @@ export class VegetablesService {
     private ordersRepository: Repository<VegetableOrder>,
     @InjectRepository(VegetableOrderItem)
     private orderItemsRepository: Repository<VegetableOrderItem>,
+    private cloudinaryService: CloudinaryService,
   ) {}
 
   // ==========================================================================
@@ -99,7 +101,15 @@ export class VegetablesService {
       await this.findOneCategory(dto.categoryId);
     }
 
-    const item = this.itemsRepository.create(dto);
+    const { image, ...rest } = dto;
+    const item = this.itemsRepository.create(rest);
+
+    if (image) {
+      const uploaded = await this.cloudinaryService.uploadBase64(image);
+      item.imageUrl = uploaded.url;
+      item.imagePublicId = uploaded.publicId;
+    }
+
     const saved = await this.itemsRepository.save(item);
     return this.findOneItem(saved.id);
   }
@@ -125,13 +135,35 @@ export class VegetablesService {
     if (dto.categoryId) {
       await this.findOneCategory(dto.categoryId);
     }
-    const merged = this.itemsRepository.merge(item, dto);
+
+    const { image, ...rest } = dto;
+    const merged = this.itemsRepository.merge(item, rest);
 
     if (merged.pricingType === PricingType.WEIGHT && !merged.pricePerKg) {
       throw new BadRequestException('Los productos que se venden por peso requieren precio por kilo');
     }
     if (merged.pricingType === PricingType.FIXED && !merged.fixedPrice) {
       throw new BadRequestException('Los productos de precio fijo requieren un precio');
+    }
+
+    // image === undefined: no se tocó la foto.
+    // image === '' (string vacío): se pidió quitarla.
+    // image === <base64>: se reemplaza por una nueva.
+    if (image !== undefined) {
+      const previousPublicId = merged.imagePublicId;
+
+      if (image) {
+        const uploaded = await this.cloudinaryService.uploadBase64(image);
+        merged.imageUrl = uploaded.url;
+        merged.imagePublicId = uploaded.publicId;
+      } else {
+        merged.imageUrl = null;
+        merged.imagePublicId = null;
+      }
+
+      if (previousPublicId && previousPublicId !== merged.imagePublicId) {
+        await this.cloudinaryService.deleteImage(previousPublicId);
+      }
     }
 
     const saved = await this.itemsRepository.save(merged);
