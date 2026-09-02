@@ -50,6 +50,13 @@ export class VegetableItem {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // Foto del producto en base64 (sin el prefijo "data:image/...;base64,"),
+  // comprimida en el cliente antes de subir. Se guarda directo en la fila
+  // porque el backend en Render no tiene almacenamiento de archivos
+  // persistente entre despliegues - no hay dónde guardar un archivo subido.
+  @Column({ type: 'text', nullable: true })
+  image: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

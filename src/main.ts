@@ -12,6 +12,7 @@ import { AppModule } from './app.module';
 import { LoggerService } from './common/logger/logger.service';
 import helmet from 'helmet';
 import * as compression from 'compression';
+import { json, urlencoded } from 'express';
 import 'reflect-metadata';
 
 async function bootstrap() {
@@ -21,6 +22,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: new LoggerService('NestApplication'),
   });
+
+  // Express' default JSON body limit (100kb) is too small for the vegetable
+  // catalog's product photos, which travel as base64 in the request body.
+  app.use(json({ limit: '5mb' }));
+  app.use(urlencoded({ limit: '5mb', extended: true }));
 
   const configService = app.get(ConfigService);
   // Render usa PORT=10000, pero también soporta process.env.PORT

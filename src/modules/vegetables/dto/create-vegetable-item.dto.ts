@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsOptional,
   Min,
+  MaxLength,
   ValidateIf,
 } from 'class-validator';
 import { PricingType } from '../entities/vegetable-item.entity';
@@ -37,4 +38,10 @@ export class CreateVegetableItemDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // Base64 (sin prefijo data:), ya comprimida en el cliente antes de subir.
+  @IsOptional()
+  @IsString()
+  @MaxLength(2_000_000)
+  image?: string;
 }
