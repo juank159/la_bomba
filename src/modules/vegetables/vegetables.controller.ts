@@ -16,6 +16,7 @@ import { UpdateVegetableItemDto } from './dto/update-vegetable-item.dto';
 import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto';
 import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto';
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
+import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -96,5 +97,22 @@ export class VegetablesController {
   @Get('sales/:id')
   findOneSale(@Param('id') id: string) {
     return this.vegetablesService.findOneSale(id);
+  }
+
+  // ---- Pedidos ----
+
+  @Post('orders')
+  createOrder(@Body() dto: CreateVegetableOrderDto, @Request() req) {
+    return this.vegetablesService.createOrder(dto, req.user.username);
+  }
+
+  @Get('orders')
+  findAllOrders() {
+    return this.vegetablesService.findAllOrders();
+  }
+
+  @Get('orders/:id')
+  findOneOrder(@Param('id') id: string) {
+    return this.vegetablesService.findOneOrder(id);
   }
 }

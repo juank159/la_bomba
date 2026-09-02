@@ -5,11 +5,14 @@ import { VegetableItem, PricingType } from './entities/vegetable-item.entity';
 import { VegetableCategory } from './entities/vegetable-category.entity';
 import { VegetableSale } from './entities/vegetable-sale.entity';
 import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
+import { VegetableOrder } from './entities/vegetable-order.entity';
+import { VegetableOrderItem } from './entities/vegetable-order-item.entity';
 import { CreateVegetableItemDto } from './dto/create-vegetable-item.dto';
 import { UpdateVegetableItemDto } from './dto/update-vegetable-item.dto';
 import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto';
 import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto';
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
+import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
 
 @Injectable()
 export class VegetablesService {
@@ -22,6 +25,10 @@ export class VegetablesService {
     private salesRepository: Repository<VegetableSale>,
     @InjectRepository(VegetableSaleItem)
     private saleItemsRepository: Repository<VegetableSaleItem>,
+    @InjectRepository(VegetableOrder)
+    private ordersRepository: Repository<VegetableOrder>,
+    @InjectRepository(VegetableOrderItem)
+    private orderItemsRepository: Repository<VegetableOrderItem>,
   ) {}
 
   // ==========================================================================
@@ -231,5 +238,71 @@ export class VegetablesService {
     }
 
     return sale;
+  }
+
+  // ==========================================================================
+  // Pedidos (lista simple para reabastecer, sin proveedor ni estado)
+  // ==========================================================================
+
+  async createOrder(dto: CreateVegetableOrderDto, username: string): Promise<VegetableOrder> {
+    const itemIds = dto.items
+      .map((line) => line.vegetableItemId)
+      .filter((id): id is string => !!id);
+    const itemsById = itemIds.length
+      ? new Map((await this.itemsRepository.find({ where: { id: In(itemIds) } })).map((i) => [i.id, i]))
+      : new Map<string, VegetableItem>();
+
+    const itemsData = dto.items.map((line) => {
+      let description = line.description?.trim();
+
+      if (line.vegetableItemId) {
+        const item = itemsById.get(line.vegetableItemId);
+        if (!item) {
+          throw new BadRequestException(`Producto no encontrado: ${line.vegetableItemId}`);
+        }
+        description = item.name;
+      }
+
+      if (!description) {
+        throw new BadRequestException('Cada línea del pedido necesita un producto del catálogo o un nombre');
+      }
+
+      return {
+        vegetableItemId: line.vegetableItemId ?? null,
+        description,
+        quantity: line.quantity,
+        unit: line.unit,
+      };
+    });
+
+    const order = this.ordersRepository.create({ createdBy: username });
+    const savedOrder = await this.ordersRepository.save(order);
+
+    const orderItems = itemsData.map((item) =>
+      this.orderItemsRepository.create({ orderId: savedOrder.id, ...item }),
+    );
+    await this.orderItemsRepository.save(orderItems);
+
+    return this.findOneOrder(savedOrder.id);
+  }
+
+  async findAllOrders(): Promise<VegetableOrder[]> {
+    return this.ordersRepository.find({
+      relations: ['items'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findOneOrder(id: string): Promise<VegetableOrder> {
+    const order = await this.ordersRepository.findOne({
+      where: { id },
+      relations: ['items'],
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Pedido con ID ${id} no encontrado`);
+    }
+
+    return order;
   }
 }
