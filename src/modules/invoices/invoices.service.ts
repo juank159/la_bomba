@@ -45,9 +45,15 @@ export class InvoicesService {
 
     // precioA ya incluye el IVA, así que el IVA se EXTRAE del precio de venta
     // (no se suma encima). El total de la línea es siempre unitPrice * quantity.
+    //
+    // El cliente puede pedir precioB/precioC (mayorista/super mayorista) en
+    // vez del precioA por defecto, pero el monto SIEMPRE se valida contra los
+    // precios reales guardados en el producto - nunca se usa el número que
+    // manda el cliente sin verificar, para que no se pueda facturar a
+    // cualquier precio manipulando la petición.
     const itemsData = dto.items.map(item => {
       const product = productsById.get(item.productId)!;
-      const unitPrice = Number(product.precioA);
+      const unitPrice = this.resolveUnitPrice(product, item.unitPrice);
       const ivaPercent = Number(product.iva) || 0;
       const lineTotal = unitPrice * item.quantity;
       const lineTax = lineTotal - lineTotal / (1 + ivaPercent / 100);
@@ -88,6 +94,30 @@ export class InvoicesService {
     await this.invoiceItemsRepository.save(invoiceItems);
 
     return this.findOne(savedInvoice.id);
+  }
+
+  /// Resuelve el precio unitario a facturar: si el cliente no pidió uno en
+  /// particular, usa precioA (el precio obligatorio/público). Si pidió uno,
+  /// lo acepta SOLO si coincide (con tolerancia de centavo por redondeo de
+  /// punto flotante) con precioA, precioB o precioC del producto - de lo
+  /// contrario rechaza la factura completa.
+  private resolveUnitPrice(product: Product, requestedPrice?: number): number {
+    if (requestedPrice === undefined || requestedPrice === null) {
+      return Number(product.precioA);
+    }
+
+    const allowedPrices = [product.precioA, product.precioB, product.precioC]
+      .filter((p): p is number => p !== null && p !== undefined)
+      .map(p => Number(p));
+
+    const matches = allowedPrices.some(p => Math.abs(p - requestedPrice) < 0.01);
+    if (!matches) {
+      throw new BadRequestException(
+        `Precio inválido para el producto "${product.description}": debe ser uno de sus precios configurados`,
+      );
+    }
+
+    return requestedPrice;
   }
 
   async findAll(): Promise<Invoice[]> {
