@@ -77,9 +77,11 @@ export class VegetableCashSessionsService {
 
   /// Sesión abierta ahora mismo (o null si la caja está cerrada), con los
   /// totales en vivo (solo efectivo) y el desglose por método de pago
-  /// para mostrar antes de cerrar.
+  /// para mostrar antes de cerrar. `isStale` indica que la caja quedó
+  /// abierta desde un día anterior sin cerrar - no habilita vender.
   async getCurrent(): Promise<{
     session: VegetableCashSession | null;
+    isStale: boolean;
     cashSales: number;
     cashExpenses: number;
     expectedAmount: number;
@@ -87,17 +89,37 @@ export class VegetableCashSessionsService {
   }> {
     const session = await this.getCurrentOpenSession();
     if (!session) {
-      return { session: null, cashSales: 0, cashExpenses: 0, expectedAmount: 0, paymentBreakdown: [] };
+      return { session: null, isStale: false, cashSales: 0, cashExpenses: 0, expectedAmount: 0, paymentBreakdown: [] };
     }
 
+    const isStale = !this.isSameCalendarDay(session.openedAt, new Date());
     const { cashSales, cashExpenses } = await this.computeSessionTotals(session.id);
     const expectedAmount = Number(session.openingAmount) + cashSales - cashExpenses;
     const paymentBreakdown = await this.computePaymentBreakdown(session.id);
-    return { session, cashSales, cashExpenses, expectedAmount, paymentBreakdown };
+    return { session, isStale, cashSales, cashExpenses, expectedAmount, paymentBreakdown };
   }
 
   async getCurrentOpenSession(): Promise<VegetableCashSession | null> {
     return this.sessionsRepository.findOne({ where: { status: CashSessionStatus.OPEN } });
+  }
+
+  /// La caja que realmente habilita vender: tiene que estar abierta Y
+  /// haber sido abierta hoy. Si quedó una caja abierta de un día anterior
+  /// sin cerrar, esto devuelve null (hay que cerrarla y abrir una nueva).
+  async getCurrentOpenSessionForToday(): Promise<VegetableCashSession | null> {
+    const session = await this.getCurrentOpenSession();
+    if (!session || !this.isSameCalendarDay(session.openedAt, new Date())) {
+      return null;
+    }
+    return session;
+  }
+
+  private isSameCalendarDay(a: Date, b: Date): boolean {
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
   }
 
   async findAll(): Promise<VegetableCashSession[]> {

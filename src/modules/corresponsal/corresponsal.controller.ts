@@ -8,7 +8,7 @@ import { UserRole } from '../users/entities/user.entity';
 
 @Controller('corresponsal')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.ADMIN, UserRole.VERDULERO)
 export class CorresponsalController {
   constructor(private readonly corresponsalService: CorresponsalService) {}
 

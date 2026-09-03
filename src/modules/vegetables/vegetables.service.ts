@@ -258,13 +258,25 @@ export class VegetablesService {
       };
     });
 
-    const openSession = await this.cashSessionsService.getCurrentOpenSession();
+    // No se vende sin caja abierta HOY. Si quedó una caja abierta de un
+    // día anterior sin cerrar, tampoco se permite vender hasta cerrarla y
+    // abrir una nueva - la caja se abre y se cierra todos los días.
+    const openSession = await this.cashSessionsService.getCurrentOpenSessionForToday();
+    if (!openSession) {
+      const staleSession = await this.cashSessionsService.getCurrentOpenSession();
+      if (staleSession) {
+        throw new BadRequestException(
+          'Hay una caja abierta desde un día anterior sin cerrar. Ciérrala y abre una nueva caja de hoy antes de vender.',
+        );
+      }
+      throw new BadRequestException('No hay una caja abierta. Debes abrir la caja antes de vender.');
+    }
 
     const sale = this.salesRepository.create({
       total,
       soldBy: username,
       paymentMethodId: paymentMethod.id,
-      cashSessionId: openSession?.id,
+      cashSessionId: openSession.id,
     });
     const savedSale = await this.salesRepository.save(sale);
 

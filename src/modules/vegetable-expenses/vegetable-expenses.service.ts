@@ -18,8 +18,14 @@ export class VegetableExpensesService {
     let cashSessionId: string | undefined;
 
     if (dto.fundingSource === ExpenseFundingSource.CAJA) {
-      const openSession = await this.cashSessionsService.getCurrentOpenSession();
+      const openSession = await this.cashSessionsService.getCurrentOpenSessionForToday();
       if (!openSession) {
+        const staleSession = await this.cashSessionsService.getCurrentOpenSession();
+        if (staleSession) {
+          throw new BadRequestException(
+            'Hay una caja abierta desde un día anterior sin cerrar. Ciérrala y abre una nueva caja de hoy, o registra este gasto como dinero externo.',
+          );
+        }
         throw new BadRequestException(
           'No hay una caja abierta - abre caja primero o registra este gasto como dinero externo',
         );
