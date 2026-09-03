@@ -16,6 +16,7 @@ import { IncomesModule } from './modules/incomes/incomes.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { VegetablesModule } from './modules/vegetables/vegetables.module';
 import { VegetableExpensesModule } from './modules/vegetable-expenses/vegetable-expenses.module';
+import { VegetableCashSessionsModule } from './modules/vegetable-cash-sessions/vegetable-cash-sessions.module';
 import { HealthModule } from './health/health.module';
 import { createDatabaseConfig } from './config/database.config';
 import configuration, { validateConfig } from './config/configuration';
@@ -51,6 +52,7 @@ import configuration, { validateConfig } from './config/configuration';
     InvoicesModule,
     VegetablesModule,
     VegetableExpensesModule,
+    VegetableCashSessionsModule,
   ],
 })
 export class AppModule {}

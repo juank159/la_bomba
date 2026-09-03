@@ -22,6 +22,12 @@ export class VegetableSale {
   @Column({ name: 'sold_by' })
   soldBy: string;
 
+  // Turno de caja que estaba abierto al momento de la venta (null si no
+  // había ninguno abierto) - todas las ventas de verduras son en efectivo,
+  // así que esto es lo que alimenta el cierre de caja.
+  @Column({ name: 'cash_session_id', nullable: true })
+  cashSessionId: string;
+
   @OneToMany(() => VegetableSaleItem, (item) => item.sale, { cascade: true })
   items: VegetableSaleItem[];
 

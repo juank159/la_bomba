@@ -12,6 +12,7 @@ import { VegetableStockMovement } from './entities/vegetable-stock-movement.enti
 import { VegetablePurchase } from './entities/vegetable-purchase.entity';
 import { VegetablePurchaseItem } from './entities/vegetable-purchase-item.entity';
 import { CloudinaryModule } from '../../common/cloudinary/cloudinary.module';
+import { VegetableCashSessionsModule } from '../vegetable-cash-sessions/vegetable-cash-sessions.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { CloudinaryModule } from '../../common/cloudinary/cloudinary.module';
       VegetablePurchaseItem,
     ]),
     CloudinaryModule,
+    VegetableCashSessionsModule,
   ],
   controllers: [VegetablesController],
   providers: [VegetablesService],

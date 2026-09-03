@@ -19,6 +19,7 @@ import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
 import { CreateStockMovementDto, CreatableStockMovementType } from './dto/create-stock-movement.dto';
 import { CreateVegetablePurchaseDto } from './dto/create-vegetable-purchase.dto';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
+import { VegetableCashSessionsService } from '../vegetable-cash-sessions/vegetable-cash-sessions.service';
 
 @Injectable()
 export class VegetablesService {
@@ -42,6 +43,7 @@ export class VegetablesService {
     @InjectRepository(VegetablePurchaseItem)
     private purchaseItemsRepository: Repository<VegetablePurchaseItem>,
     private cloudinaryService: CloudinaryService,
+    private cashSessionsService: VegetableCashSessionsService,
   ) {}
 
   // ==========================================================================
@@ -246,9 +248,12 @@ export class VegetablesService {
       };
     });
 
+    const openSession = await this.cashSessionsService.getCurrentOpenSession();
+
     const sale = this.salesRepository.create({
       total,
       soldBy: username,
+      cashSessionId: openSession?.id,
     });
     const savedSale = await this.salesRepository.save(sale);
 
