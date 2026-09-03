@@ -51,6 +51,11 @@ export class VegetableStockMovement {
   @Column({ name: 'sale_id', nullable: true })
   saleId: string;
 
+  // Solo se llena cuando type = IN viene de una compra registrada (no de
+  // una entrada manual desde Inventario), para trazabilidad hacia la compra.
+  @Column({ name: 'purchase_id', nullable: true })
+  purchaseId: string;
+
   @Column({ name: 'created_by' })
   createdBy: string;
 

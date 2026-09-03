@@ -8,6 +8,8 @@ import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
 import { VegetableOrder } from './entities/vegetable-order.entity';
 import { VegetableOrderItem } from './entities/vegetable-order-item.entity';
 import { VegetableStockMovement, StockMovementType } from './entities/vegetable-stock-movement.entity';
+import { VegetablePurchase } from './entities/vegetable-purchase.entity';
+import { VegetablePurchaseItem } from './entities/vegetable-purchase-item.entity';
 import { CreateVegetableItemDto } from './dto/create-vegetable-item.dto';
 import { UpdateVegetableItemDto } from './dto/update-vegetable-item.dto';
 import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto';
@@ -15,6 +17,7 @@ import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto'
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
 import { CreateStockMovementDto, CreatableStockMovementType } from './dto/create-stock-movement.dto';
+import { CreateVegetablePurchaseDto } from './dto/create-vegetable-purchase.dto';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 
 @Injectable()
@@ -34,6 +37,10 @@ export class VegetablesService {
     private orderItemsRepository: Repository<VegetableOrderItem>,
     @InjectRepository(VegetableStockMovement)
     private stockMovementsRepository: Repository<VegetableStockMovement>,
+    @InjectRepository(VegetablePurchase)
+    private purchasesRepository: Repository<VegetablePurchase>,
+    @InjectRepository(VegetablePurchaseItem)
+    private purchaseItemsRepository: Repository<VegetablePurchaseItem>,
     private cloudinaryService: CloudinaryService,
   ) {}
 
@@ -414,6 +421,7 @@ export class VegetablesService {
       quantity: number;
       reason?: string;
       saleId?: string;
+      purchaseId?: string;
       createdBy: string;
       enforceNonNegative: boolean;
     },
@@ -433,11 +441,86 @@ export class VegetablesService {
       resultingStock,
       reason: params.reason,
       saleId: params.saleId,
+      purchaseId: params.purchaseId,
       createdBy: params.createdBy,
     });
     await this.stockMovementsRepository.save(movement);
 
     item.stock = resultingStock;
     await this.itemsRepository.save(item);
+  }
+
+  // ==========================================================================
+  // Compras (registro real de mercancía comprada, con costo)
+  // ==========================================================================
+
+  /// A diferencia de "Pedidos" (solo una lista para saber qué comprar), una
+  /// compra es la transacción real: suma al inventario lo comprado y queda
+  /// como registro de costo. Solo acepta productos ya existentes en el
+  /// catálogo.
+  async createPurchase(dto: CreateVegetablePurchaseDto, username: string): Promise<VegetablePurchase> {
+    const itemIds = dto.items.map((i) => i.vegetableItemId);
+    const items = await this.itemsRepository.find({ where: { id: In(itemIds) } });
+    const itemsById = new Map(items.map((i) => [i.id, i]));
+
+    const missingId = itemIds.find((id) => !itemsById.has(id));
+    if (missingId) {
+      throw new BadRequestException(`Producto no encontrado: ${missingId}`);
+    }
+
+    let total = 0;
+    const itemsData = dto.items.map((line) => {
+      const item = itemsById.get(line.vegetableItemId)!;
+      const lineTotal = line.quantity * line.unitCost;
+      total += lineTotal;
+
+      return {
+        vegetableItemId: item.id,
+        description: item.name,
+        quantity: line.quantity,
+        unitCost: line.unitCost,
+        total: lineTotal,
+      };
+    });
+
+    const purchase = this.purchasesRepository.create({ total, createdBy: username });
+    const savedPurchase = await this.purchasesRepository.save(purchase);
+
+    const purchaseItems = itemsData.map((item) =>
+      this.purchaseItemsRepository.create({ purchaseId: savedPurchase.id, ...item }),
+    );
+    await this.purchaseItemsRepository.save(purchaseItems);
+
+    for (const line of itemsData) {
+      await this.applyStockMovement(itemsById.get(line.vegetableItemId)!, {
+        type: StockMovementType.IN,
+        quantity: line.quantity,
+        purchaseId: savedPurchase.id,
+        createdBy: username,
+        enforceNonNegative: true,
+      });
+    }
+
+    return this.findOnePurchase(savedPurchase.id);
+  }
+
+  async findAllPurchases(): Promise<VegetablePurchase[]> {
+    return this.purchasesRepository.find({
+      relations: ['items'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findOnePurchase(id: string): Promise<VegetablePurchase> {
+    const purchase = await this.purchasesRepository.findOne({
+      where: { id },
+      relations: ['items'],
+    });
+
+    if (!purchase) {
+      throw new NotFoundException(`Compra con ID ${id} no encontrada`);
+    }
+
+    return purchase;
   }
 }

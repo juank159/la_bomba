@@ -9,6 +9,8 @@ import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
 import { VegetableOrder } from './entities/vegetable-order.entity';
 import { VegetableOrderItem } from './entities/vegetable-order-item.entity';
 import { VegetableStockMovement } from './entities/vegetable-stock-movement.entity';
+import { VegetablePurchase } from './entities/vegetable-purchase.entity';
+import { VegetablePurchaseItem } from './entities/vegetable-purchase-item.entity';
 import { CloudinaryModule } from '../../common/cloudinary/cloudinary.module';
 
 @Module({
@@ -21,6 +23,8 @@ import { CloudinaryModule } from '../../common/cloudinary/cloudinary.module';
       VegetableOrder,
       VegetableOrderItem,
       VegetableStockMovement,
+      VegetablePurchase,
+      VegetablePurchaseItem,
     ]),
     CloudinaryModule,
   ],

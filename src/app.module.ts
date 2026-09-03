@@ -15,6 +15,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { IncomesModule } from './modules/incomes/incomes.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { VegetablesModule } from './modules/vegetables/vegetables.module';
+import { VegetableExpensesModule } from './modules/vegetable-expenses/vegetable-expenses.module';
 import { HealthModule } from './health/health.module';
 import { createDatabaseConfig } from './config/database.config';
 import configuration, { validateConfig } from './config/configuration';
@@ -49,6 +50,7 @@ import configuration, { validateConfig } from './config/configuration';
     IncomesModule,
     InvoicesModule,
     VegetablesModule,
+    VegetableExpensesModule,
   ],
 })
 export class AppModule {}
