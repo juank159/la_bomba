@@ -7,12 +7,14 @@ import { VegetableSale } from './entities/vegetable-sale.entity';
 import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
 import { VegetableOrder } from './entities/vegetable-order.entity';
 import { VegetableOrderItem } from './entities/vegetable-order-item.entity';
+import { VegetableStockMovement, StockMovementType } from './entities/vegetable-stock-movement.entity';
 import { CreateVegetableItemDto } from './dto/create-vegetable-item.dto';
 import { UpdateVegetableItemDto } from './dto/update-vegetable-item.dto';
 import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto';
 import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto';
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
+import { CreateStockMovementDto, CreatableStockMovementType } from './dto/create-stock-movement.dto';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 
 @Injectable()
@@ -30,6 +32,8 @@ export class VegetablesService {
     private ordersRepository: Repository<VegetableOrder>,
     @InjectRepository(VegetableOrderItem)
     private orderItemsRepository: Repository<VegetableOrderItem>,
+    @InjectRepository(VegetableStockMovement)
+    private stockMovementsRepository: Repository<VegetableStockMovement>,
     private cloudinaryService: CloudinaryService,
   ) {}
 
@@ -249,6 +253,24 @@ export class VegetablesService {
     );
     await this.saleItemsRepository.save(saleItems);
 
+    // Descuenta del inventario lo vendido. No bloquea la venta si el stock
+    // no alcanza (queda en negativo) - todavía no todos los productos
+    // tienen un conteo inicial cargado, así que exigir stock suficiente
+    // frenaría ventas normales. El número en negativo es justamente la
+    // señal de "esto quedó sin cargar/contar".
+    for (const line of itemsData) {
+      const soldAmount = line.weightKg ?? line.quantity ?? 0;
+      if (soldAmount > 0) {
+        await this.applyStockMovement(itemsById.get(line.vegetableItemId)!, {
+          type: StockMovementType.SALE,
+          quantity: -soldAmount,
+          saleId: savedSale.id,
+          createdBy: username,
+          enforceNonNegative: false,
+        });
+      }
+    }
+
     return this.findOneSale(savedSale.id);
   }
 
@@ -336,5 +358,86 @@ export class VegetablesService {
     }
 
     return order;
+  }
+
+  // ==========================================================================
+  // Inventario / Merma
+  // ==========================================================================
+
+  /// Registra un movimiento de stock pedido explícitamente por un usuario
+  /// (entrada, merma o ajuste manual). SALE nunca pasa por acá - lo crea
+  /// createSale() directamente vía applyStockMovement().
+  async registerStockMovement(
+    itemId: string,
+    dto: CreateStockMovementDto,
+    username: string,
+  ): Promise<VegetableItem> {
+    const item = await this.findOneItem(itemId);
+
+    const quantity =
+      dto.type === CreatableStockMovementType.MERMA
+        ? -Math.abs(dto.quantity)
+        : dto.type === CreatableStockMovementType.IN
+          ? Math.abs(dto.quantity)
+          : dto.quantity; // ADJUSTMENT: se respeta el signo que mandó el usuario
+
+    await this.applyStockMovement(item, {
+      type: dto.type as unknown as StockMovementType,
+      quantity,
+      reason: dto.reason,
+      createdBy: username,
+      enforceNonNegative: true,
+    });
+
+    return this.findOneItem(itemId);
+  }
+
+  async findStockMovements(itemId: string): Promise<VegetableStockMovement[]> {
+    await this.findOneItem(itemId); // 404 si no existe
+    return this.stockMovementsRepository.find({
+      where: { vegetableItemId: itemId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /// Único lugar que de verdad cambia `vegetable_items.stock`: aplica
+  /// [quantity] (con signo) al saldo actual de [item], guarda el
+  /// movimiento con el saldo resultante como snapshot, y persiste el nuevo
+  /// stock en el item. Si `enforceNonNegative` es true y el resultado
+  /// quedaría negativo, rechaza la operación (usado para merma/ajustes
+  /// manuales; las ventas SÍ pueden dejar el stock en negativo, ver nota
+  /// en createSale()).
+  private async applyStockMovement(
+    item: VegetableItem,
+    params: {
+      type: StockMovementType;
+      quantity: number;
+      reason?: string;
+      saleId?: string;
+      createdBy: string;
+      enforceNonNegative: boolean;
+    },
+  ): Promise<void> {
+    const resultingStock = Number(item.stock) + params.quantity;
+
+    if (params.enforceNonNegative && resultingStock < 0) {
+      throw new BadRequestException(
+        `Stock insuficiente: "${item.name}" tiene ${Number(item.stock)} y esta operación dejaría ${resultingStock}`,
+      );
+    }
+
+    const movement = this.stockMovementsRepository.create({
+      vegetableItemId: item.id,
+      type: params.type,
+      quantity: params.quantity,
+      resultingStock,
+      reason: params.reason,
+      saleId: params.saleId,
+      createdBy: params.createdBy,
+    });
+    await this.stockMovementsRepository.save(movement);
+
+    item.stock = resultingStock;
+    await this.itemsRepository.save(item);
   }
 }

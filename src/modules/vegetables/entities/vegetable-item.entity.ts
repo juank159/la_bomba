@@ -50,6 +50,13 @@ export class VegetableItem {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // Saldo actual de inventario (kg para productos que se venden por peso,
+  // unidades para los de precio fijo - según pricingType). Se mantiene en
+  // sincronía con vegetable_stock_movements: nunca se edita directo desde
+  // afuera del service, siempre a través de un movimiento registrado.
+  @Column('decimal', { precision: 10, scale: 3, default: 0 })
+  stock: number;
+
   // Foto del producto: se sube a Cloudinary (el cliente manda el JPEG ya
   // comprimido en base64, el backend lo sube con sus credenciales y guarda
   // acá la URL pública). imagePublicId se usa solo para poder borrarla de

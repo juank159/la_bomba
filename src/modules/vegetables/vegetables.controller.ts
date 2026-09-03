@@ -17,6 +17,7 @@ import { CreateVegetableCategoryDto } from './dto/create-vegetable-category.dto'
 import { UpdateVegetableCategoryDto } from './dto/update-vegetable-category.dto';
 import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
+import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -114,5 +115,21 @@ export class VegetablesController {
   @Get('orders/:id')
   findOneOrder(@Param('id') id: string) {
     return this.vegetablesService.findOneOrder(id);
+  }
+
+  // ---- Inventario / Merma ----
+
+  @Post('items/:id/stock-movements')
+  registerStockMovement(
+    @Param('id') id: string,
+    @Body() dto: CreateStockMovementDto,
+    @Request() req,
+  ) {
+    return this.vegetablesService.registerStockMovement(id, dto, req.user.username);
+  }
+
+  @Get('items/:id/stock-movements')
+  findStockMovements(@Param('id') id: string) {
+    return this.vegetablesService.findStockMovements(id);
   }
 }
