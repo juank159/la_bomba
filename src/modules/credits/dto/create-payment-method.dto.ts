@@ -21,4 +21,8 @@ export class CreatePaymentMethodDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isCash?: boolean;
 }

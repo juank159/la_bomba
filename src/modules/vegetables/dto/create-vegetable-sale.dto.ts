@@ -36,4 +36,11 @@ export class CreateVegetableSaleDto {
   @ValidateNested({ each: true })
   @Type(() => CreateVegetableSaleItemDto)
   items: CreateVegetableSaleItemDto[];
+
+  // Cómo pagó el cliente: efectivo o un método de transferencia (Nequi,
+  // Bancolombia, etc.) - de la misma tabla payment_methods que usa
+  // Facturación.
+  @IsString()
+  @IsNotEmpty()
+  paymentMethodId: string;
 }

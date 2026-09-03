@@ -37,4 +37,9 @@ export class VegetableCashSessionsController {
   findOne(@Param('id') id: string) {
     return this.cashSessionsService.findOne(id);
   }
+
+  @Get(':id/payment-breakdown')
+  getBreakdown(@Param('id') id: string) {
+    return this.cashSessionsService.getBreakdown(id);
+  }
 }

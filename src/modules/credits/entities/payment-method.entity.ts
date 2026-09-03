@@ -25,6 +25,13 @@ export class PaymentMethod {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  // true solo para el método que representa dinero físico en la caja (ej.
+  // "Efectivo"). El cierre de caja del módulo de verduras usa esto para
+  // saber qué ventas cuentan como efectivo real vs plata que fue a un
+  // banco (Nequi, Bancolombia, etc.) y por lo tanto no está en la caja.
+  @Column({ name: 'is_cash', type: 'boolean', default: false })
+  isCash: boolean;
+
   @Column({ name: 'created_by', type: 'varchar', length: 100 })
   createdBy: string;
 

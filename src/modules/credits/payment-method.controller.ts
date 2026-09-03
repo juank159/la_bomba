@@ -26,13 +26,13 @@ export class PaymentMethodController {
   constructor(private readonly paymentMethodService: PaymentMethodService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.VERDULERO)
   async findAll(@Query('includeInactive') includeInactive?: string) {
     return this.paymentMethodService.findAll(includeInactive === 'true');
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.VERDULERO)
   async findOne(@Param('id') id: string) {
     return this.paymentMethodService.findOne(id);
   }

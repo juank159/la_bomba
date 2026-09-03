@@ -20,6 +20,7 @@ import { CreateStockMovementDto, CreatableStockMovementType } from './dto/create
 import { CreateVegetablePurchaseDto } from './dto/create-vegetable-purchase.dto';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { VegetableCashSessionsService } from '../vegetable-cash-sessions/vegetable-cash-sessions.service';
+import { PaymentMethod } from '../credits/entities/payment-method.entity';
 
 @Injectable()
 export class VegetablesService {
@@ -42,6 +43,8 @@ export class VegetablesService {
     private purchasesRepository: Repository<VegetablePurchase>,
     @InjectRepository(VegetablePurchaseItem)
     private purchaseItemsRepository: Repository<VegetablePurchaseItem>,
+    @InjectRepository(PaymentMethod)
+    private paymentMethodsRepository: Repository<PaymentMethod>,
     private cloudinaryService: CloudinaryService,
     private cashSessionsService: VegetableCashSessionsService,
   ) {}
@@ -196,6 +199,13 @@ export class VegetablesService {
   // ==========================================================================
 
   async createSale(dto: CreateVegetableSaleDto, username: string): Promise<VegetableSale> {
+    const paymentMethod = await this.paymentMethodsRepository.findOne({
+      where: { id: dto.paymentMethodId },
+    });
+    if (!paymentMethod) {
+      throw new BadRequestException('Método de pago no encontrado');
+    }
+
     const itemIds = dto.items.map((i) => i.vegetableItemId);
     const items = await this.itemsRepository.find({ where: { id: In(itemIds) } });
     const itemsById = new Map(items.map((i) => [i.id, i]));
@@ -253,6 +263,7 @@ export class VegetablesService {
     const sale = this.salesRepository.create({
       total,
       soldBy: username,
+      paymentMethodId: paymentMethod.id,
       cashSessionId: openSession?.id,
     });
     const savedSale = await this.salesRepository.save(sale);
@@ -288,7 +299,7 @@ export class VegetablesService {
 
   async findAllSales(): Promise<VegetableSale[]> {
     return this.salesRepository.find({
-      relations: ['items'],
+      relations: ['items', 'paymentMethod'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -296,7 +307,7 @@ export class VegetablesService {
   async findOneSale(id: string): Promise<VegetableSale> {
     const sale = await this.salesRepository.findOne({
       where: { id },
-      relations: ['items'],
+      relations: ['items', 'paymentMethod'],
     });
 
     if (!sale) {

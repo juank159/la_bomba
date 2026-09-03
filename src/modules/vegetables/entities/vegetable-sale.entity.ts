@@ -4,8 +4,11 @@ import {
   Column,
   CreateDateColumn,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { VegetableSaleItem } from './vegetable-sale-item.entity';
+import { PaymentMethod } from '../../credits/entities/payment-method.entity';
 
 @Entity('vegetable_sales')
 export class VegetableSale {
@@ -22,9 +25,19 @@ export class VegetableSale {
   @Column({ name: 'sold_by' })
   soldBy: string;
 
+  // Cómo pagó el cliente: efectivo o uno de los métodos de transferencia
+  // (Nequi, Bancolombia, etc.). Determina si esta venta cuenta como
+  // efectivo real en el cierre de caja (paymentMethod.isCash) o como
+  // plata que fue a un banco.
+  @ManyToOne(() => PaymentMethod)
+  @JoinColumn({ name: 'payment_method_id' })
+  paymentMethod: PaymentMethod;
+
+  @Column({ name: 'payment_method_id' })
+  paymentMethodId: string;
+
   // Turno de caja que estaba abierto al momento de la venta (null si no
-  // había ninguno abierto) - todas las ventas de verduras son en efectivo,
-  // así que esto es lo que alimenta el cierre de caja.
+  // había ninguno abierto).
   @Column({ name: 'cash_session_id', nullable: true })
   cashSessionId: string;
 

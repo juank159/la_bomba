@@ -11,6 +11,7 @@ import { VegetableOrderItem } from './entities/vegetable-order-item.entity';
 import { VegetableStockMovement } from './entities/vegetable-stock-movement.entity';
 import { VegetablePurchase } from './entities/vegetable-purchase.entity';
 import { VegetablePurchaseItem } from './entities/vegetable-purchase-item.entity';
+import { PaymentMethod } from '../credits/entities/payment-method.entity';
 import { CloudinaryModule } from '../../common/cloudinary/cloudinary.module';
 import { VegetableCashSessionsModule } from '../vegetable-cash-sessions/vegetable-cash-sessions.module';
 
@@ -26,6 +27,7 @@ import { VegetableCashSessionsModule } from '../vegetable-cash-sessions/vegetabl
       VegetableStockMovement,
       VegetablePurchase,
       VegetablePurchaseItem,
+      PaymentMethod,
     ]),
     CloudinaryModule,
     VegetableCashSessionsModule,
