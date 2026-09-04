@@ -114,12 +114,26 @@ export class VegetableCashSessionsService {
     return session;
   }
 
+  // El negocio opera en Colombia (America/Bogota, UTC-5), pero el servidor
+  // puede estar corriendo en cualquier zona horaria (típicamente UTC en el
+  // hosting). Comparar "getFullYear/getMonth/getDate" directamente usaba
+  // la hora LOCAL DEL SERVIDOR, no la de Colombia: cualquier caja abierta
+  // después de las 7pm hora Colombia ya caía en el día siguiente en UTC,
+  // así que el sistema la marcaba como "de un día anterior" sin serlo
+  // todavía en Colombia. Por eso acá se convierte cada fecha al día
+  // calendario de Bogotá (vía Intl, sin depender de la zona del proceso)
+  // antes de comparar.
+  private toBogotaDateKey(date: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
+
   private isSameCalendarDay(a: Date, b: Date): boolean {
-    return (
-      a.getFullYear() === b.getFullYear() &&
-      a.getMonth() === b.getMonth() &&
-      a.getDate() === b.getDate()
-    );
+    return this.toBogotaDateKey(a) === this.toBogotaDateKey(b);
   }
 
   async findAll(): Promise<VegetableCashSession[]> {
