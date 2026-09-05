@@ -331,22 +331,46 @@ export class ProductsService {
   ): Promise<void> {
     const priceFields = ["precioA", "precioB", "precioC"];
 
+    // precioA/B/C e iva son columnas `decimal` de Postgres: TypeORM las
+    // devuelve como STRING ("12000.00", para no perder precisión), mientras
+    // que UpdateProductDto las convierte a number ("12000") vía @Type(() =>
+    // Number). Comparar con !== entre un number y ese string SIEMPRE da
+    // true, así que cada guardado del producto - aunque el precio o el IVA
+    // no hubieran cambiado - se leía como "cambió" y generaba una tarea
+    // nueva para el digitador una y otra vez. Por eso estos dos campos se
+    // comparan numéricamente; description/barcode siguen siendo string vs
+    // string, ahí la comparación de siempre es correcta.
+    const decimalFields = new Set(["precioA", "precioB", "precioC", "iva"]);
+    const fieldChanged = (
+      field: string,
+      oldValue: unknown,
+      newValue: unknown
+    ): boolean => {
+      if (!decimalFields.has(field)) return oldValue !== newValue;
+      if (oldValue === null || oldValue === undefined) {
+        return newValue !== null && newValue !== undefined;
+      }
+      if (newValue === null || newValue === undefined) return true;
+      return Number(oldValue) !== Number(newValue);
+    };
+
     const priceChanges = priceFields.filter(
       (field) =>
         updateData[field] !== undefined &&
-        updateData[field] !== oldValues[field]
+        fieldChanged(field, oldValues[field], updateData[field])
     );
 
     const nameChanged =
       updateData["description"] !== undefined &&
-      updateData["description"] !== oldValues["description"];
+      fieldChanged("description", oldValues["description"], updateData["description"]);
 
     const ivaChanged =
-      updateData["iva"] !== undefined && updateData["iva"] !== oldValues["iva"];
+      updateData["iva"] !== undefined &&
+      fieldChanged("iva", oldValues["iva"], updateData["iva"]);
 
     const barcodeChanged =
       updateData["barcode"] !== undefined &&
-      updateData["barcode"] !== oldValues["barcode"];
+      fieldChanged("barcode", oldValues["barcode"], updateData["barcode"]);
 
     /**
      * Construye payload (oldValue/newValue) restringido a un set de campos.
@@ -359,7 +383,7 @@ export class ProductsService {
       for (const f of fields) {
         const before = oldValues?.[f];
         const after = (updateData as any)[f];
-        if (after !== undefined && after !== before) {
+        if (after !== undefined && fieldChanged(f, before, after)) {
           oldV[f] = before;
           newV[f] = after;
         }
