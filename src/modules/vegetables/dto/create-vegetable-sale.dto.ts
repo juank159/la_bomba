@@ -11,9 +11,12 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreateVegetableSaleItemDto {
+  // Uno de los dos debe venir: vegetableItemId (producto del catálogo) o
+  // description+amount (venta libre, sin producto asociado) - se valida en
+  // el service, mismo patrón que CreateVegetableOrderItemDto.
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  vegetableItemId: string;
+  vegetableItemId?: string;
 
   // Peso en kg (para items que se venden por peso, viene de la báscula o se
   // ingresa manualmente). Uno de weightKg o quantity debe venir, según el
@@ -28,6 +31,25 @@ export class CreateVegetableSaleItemDto {
   @IsNumber()
   @Min(1)
   quantity?: number;
+
+  // Total de la línea ya calculado por el cliente (ej. redondeado al
+  // umbral configurado) para productos por peso - si viene, reemplaza el
+  // unitPrice*weightKg que el service calcularía. Sin esto, comportamiento
+  // igual al de siempre.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lineTotal?: number;
+
+  // Venta libre: descripción y monto libres, sin producto de catálogo.
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  amount?: number;
 }
 
 export class CreateVegetableSaleDto {

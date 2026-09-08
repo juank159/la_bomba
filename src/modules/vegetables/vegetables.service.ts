@@ -126,7 +126,12 @@ export class VegetablesService {
       item.imagePublicId = uploaded.publicId;
     }
 
-    const saved = await this.itemsRepository.save(item);
+    let saved: VegetableItem;
+    try {
+      saved = await this.itemsRepository.save(item);
+    } catch (error) {
+      throw this.handleUniqueItemNameConflict(error, dto.name);
+    }
     return this.findOneItem(saved.id);
   }
 
@@ -182,8 +187,20 @@ export class VegetablesService {
       }
     }
 
-    const saved = await this.itemsRepository.save(merged);
+    let saved: VegetableItem;
+    try {
+      saved = await this.itemsRepository.save(merged);
+    } catch (error) {
+      throw this.handleUniqueItemNameConflict(error, merged.name);
+    }
     return this.findOneItem(saved.id);
+  }
+
+  private handleUniqueItemNameConflict(error: unknown, name: string): Error {
+    if (error instanceof QueryFailedError && (error as any).code === '23505') {
+      return new ConflictException(`Ya existe un producto activo llamado "${name}"`);
+    }
+    return error as Error;
   }
 
   async removeItem(id: string): Promise<void> {
@@ -206,7 +223,9 @@ export class VegetablesService {
       throw new BadRequestException('Método de pago no encontrado');
     }
 
-    const itemIds = dto.items.map((i) => i.vegetableItemId);
+    // Solo las líneas de catálogo traen vegetableItemId - las de venta
+    // libre (sin producto asociado) no participan de este lookup.
+    const itemIds = dto.items.map((i) => i.vegetableItemId).filter((id): id is string => !!id);
     const items = await this.itemsRepository.find({ where: { id: In(itemIds) } });
     const itemsById = new Map(items.map((i) => [i.id, i]));
 
@@ -218,6 +237,27 @@ export class VegetablesService {
     let total = 0;
 
     const itemsData = dto.items.map((line) => {
+      // Venta libre: sin producto de catálogo, monto y descripción a mano.
+      if (!line.vegetableItemId) {
+        if (!line.description?.trim() || !line.amount || line.amount <= 0) {
+          throw new BadRequestException(
+            'Una venta libre requiere descripción y un monto mayor a 0',
+          );
+        }
+        const lineTotal = line.amount;
+        total += lineTotal;
+
+        return {
+          vegetableItemId: null,
+          description: line.description.trim(),
+          pricingType: PricingType.FIXED,
+          weightKg: null,
+          quantity: 1,
+          unitPrice: lineTotal,
+          total: lineTotal,
+        };
+      }
+
       const item = itemsById.get(line.vegetableItemId)!;
 
       if (item.pricingType === PricingType.WEIGHT) {
@@ -227,7 +267,11 @@ export class VegetablesService {
           );
         }
         const unitPrice = Number(item.pricePerKg);
-        const lineTotal = unitPrice * line.weightKg;
+        // lineTotal: el cliente puede mandar el total ya redondeado (según
+        // su configuración de redondeo) - si viene, se respeta en vez de
+        // recalcular desde unitPrice*weightKg, para que lo cobrado coincida
+        // con lo que se le mostró al cliente en el carrito.
+        const lineTotal = line.lineTotal && line.lineTotal > 0 ? line.lineTotal : unitPrice * line.weightKg;
         total += lineTotal;
 
         return {
@@ -294,6 +338,7 @@ export class VegetablesService {
     // frenaría ventas normales. El número en negativo es justamente la
     // señal de "esto quedó sin cargar/contar".
     for (const line of itemsData) {
+      if (!line.vegetableItemId) continue; // venta libre: no hay inventario que descontar
       const soldAmount = line.weightKg ?? line.quantity ?? 0;
       if (soldAmount > 0) {
         await this.applyStockMovement(itemsById.get(line.vegetableItemId)!, {
