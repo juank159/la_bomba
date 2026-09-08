@@ -2,12 +2,21 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 't
 import { VegetableOrder } from './vegetable-order.entity';
 import { VegetableItem } from './vegetable-item.entity';
 
-// Mismos valores/strings que MeasurementUnit del módulo de pedidos normal
-// (kilogramos, libras, unidad), para mantener el mismo lenguaje en toda la app.
+// Los primeros tres valores son los mismos que MeasurementUnit del módulo
+// de pedidos normal (kilogramos, libras, unidad); el resto son unidades
+// propias de cómo se pide mercancía a un proveedor de verduras.
 export enum VegetableOrderUnit {
   KILOGRAMOS = 'kilogramos',
   LIBRAS = 'libras',
   UNIDAD = 'unidad',
+  CAJA = 'caja',
+  BOLSA = 'bolsa',
+  BANDEJA = 'bandeja',
+  CESTA = 'cesta',
+  BULTO = 'bulto',
+  ROLLO = 'rollo',
+  DOCENA = 'docena',
+  CANASTA = 'canasta',
 }
 
 @Entity('vegetable_order_items')
