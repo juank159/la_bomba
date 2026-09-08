@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { VegetableCashSession, CashSessionStatus } from './entities/vegetable-cash-session.entity';
 import { VegetableSale } from '../vegetables/entities/vegetable-sale.entity';
+import { VegetablePurchase, PurchaseFundingSource } from '../vegetables/entities/vegetable-purchase.entity';
 import { VegetableExpense, ExpenseFundingSource } from '../vegetable-expenses/entities/vegetable-expense.entity';
 import { OpenCashSessionDto } from './dto/open-cash-session.dto';
 import { CloseCashSessionDto } from './dto/close-cash-session.dto';
@@ -10,6 +11,7 @@ import { CloseCashSessionDto } from './dto/close-cash-session.dto';
 interface SessionTotals {
   cashSales: number;
   cashExpenses: number;
+  cashPurchases: number;
 }
 
 export interface PaymentBreakdownRow {
@@ -27,6 +29,8 @@ export class VegetableCashSessionsService {
     private sessionsRepository: Repository<VegetableCashSession>,
     @InjectRepository(VegetableSale)
     private salesRepository: Repository<VegetableSale>,
+    @InjectRepository(VegetablePurchase)
+    private purchasesRepository: Repository<VegetablePurchase>,
     @InjectRepository(VegetableExpense)
     private expensesRepository: Repository<VegetableExpense>,
   ) {}
@@ -57,9 +61,11 @@ export class VegetableCashSessionsService {
     // El "esperado" en caja SOLO cuenta efectivo real - las ventas por
     // transferencia (Nequi, Bancolombia, etc.) nunca estuvieron en la
     // caja física, así que no deben sumar acá aunque sí formen parte del
-    // desglose por método de pago (ver getBreakdown).
-    const { cashSales, cashExpenses } = await this.computeSessionTotals(session.id);
-    const expectedAmount = Number(session.openingAmount) + cashSales - cashExpenses;
+    // desglose por método de pago (ver getBreakdown). Los gastos Y las
+    // compras pagados de esta caja se restan por igual - ambos sacan
+    // plata física de la caja.
+    const { cashSales, cashExpenses, cashPurchases } = await this.computeSessionTotals(session.id);
+    const expectedAmount = Number(session.openingAmount) + cashSales - cashExpenses - cashPurchases;
     const difference = dto.closingAmount - expectedAmount;
 
     session.status = CashSessionStatus.CLOSED;
@@ -84,19 +90,28 @@ export class VegetableCashSessionsService {
     isStale: boolean;
     cashSales: number;
     cashExpenses: number;
+    cashPurchases: number;
     expectedAmount: number;
     paymentBreakdown: PaymentBreakdownRow[];
   }> {
     const session = await this.getCurrentOpenSession();
     if (!session) {
-      return { session: null, isStale: false, cashSales: 0, cashExpenses: 0, expectedAmount: 0, paymentBreakdown: [] };
+      return {
+        session: null,
+        isStale: false,
+        cashSales: 0,
+        cashExpenses: 0,
+        cashPurchases: 0,
+        expectedAmount: 0,
+        paymentBreakdown: [],
+      };
     }
 
     const isStale = !this.isSameCalendarDay(session.openedAt, new Date());
-    const { cashSales, cashExpenses } = await this.computeSessionTotals(session.id);
-    const expectedAmount = Number(session.openingAmount) + cashSales - cashExpenses;
+    const { cashSales, cashExpenses, cashPurchases } = await this.computeSessionTotals(session.id);
+    const expectedAmount = Number(session.openingAmount) + cashSales - cashExpenses - cashPurchases;
     const paymentBreakdown = await this.computePaymentBreakdown(session.id);
-    return { session, isStale, cashSales, cashExpenses, expectedAmount, paymentBreakdown };
+    return { session, isStale, cashSales, cashExpenses, cashPurchases, expectedAmount, paymentBreakdown };
   }
 
   async getCurrentOpenSession(): Promise<VegetableCashSession | null> {
@@ -173,9 +188,17 @@ export class VegetableCashSessionsService {
       .andWhere('expense.fundingSource = :source', { source: ExpenseFundingSource.CAJA })
       .getRawOne<{ sum: string }>();
 
+    const purchasesResult = await this.purchasesRepository
+      .createQueryBuilder('purchase')
+      .select('COALESCE(SUM(purchase.total), 0)', 'sum')
+      .where('purchase.cashSessionId = :sessionId', { sessionId })
+      .andWhere('purchase.fundingSource = :source', { source: PurchaseFundingSource.CAJA })
+      .getRawOne<{ sum: string }>();
+
     return {
       cashSales: Number(salesResult?.sum ?? 0),
       cashExpenses: Number(expensesResult?.sum ?? 0),
+      cashPurchases: Number(purchasesResult?.sum ?? 0),
     };
   }
 

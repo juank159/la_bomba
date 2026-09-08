@@ -4,10 +4,11 @@ import { VegetableCashSessionsService } from './vegetable-cash-sessions.service'
 import { VegetableCashSessionsController } from './vegetable-cash-sessions.controller';
 import { VegetableCashSession } from './entities/vegetable-cash-session.entity';
 import { VegetableSale } from '../vegetables/entities/vegetable-sale.entity';
+import { VegetablePurchase } from '../vegetables/entities/vegetable-purchase.entity';
 import { VegetableExpense } from '../vegetable-expenses/entities/vegetable-expense.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([VegetableCashSession, VegetableSale, VegetableExpense])],
+  imports: [TypeOrmModule.forFeature([VegetableCashSession, VegetableSale, VegetablePurchase, VegetableExpense])],
   controllers: [VegetableCashSessionsController],
   providers: [VegetableCashSessionsService],
   exports: [VegetableCashSessionsService],

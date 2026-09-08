@@ -8,7 +8,7 @@ import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
 import { VegetableOrder } from './entities/vegetable-order.entity';
 import { VegetableOrderItem } from './entities/vegetable-order-item.entity';
 import { VegetableStockMovement, StockMovementType } from './entities/vegetable-stock-movement.entity';
-import { VegetablePurchase } from './entities/vegetable-purchase.entity';
+import { VegetablePurchase, PurchaseFundingSource } from './entities/vegetable-purchase.entity';
 import { VegetablePurchaseItem } from './entities/vegetable-purchase-item.entity';
 import { CreateVegetableItemDto } from './dto/create-vegetable-item.dto';
 import { UpdateVegetableItemDto } from './dto/update-vegetable-item.dto';
@@ -556,7 +556,33 @@ export class VegetablesService {
       };
     });
 
-    const purchase = this.purchasesRepository.create({ total, createdBy: username });
+    // Igual que con los gastos de verduras: si se paga con plata de la
+    // caja, tiene que haber una caja abierta hoy, y la compra queda ligada
+    // a ese turno para que el cierre de caja la descuente del efectivo
+    // esperado (si no, la compra descuadraría al cajero).
+    let cashSessionId: string | undefined;
+    if (dto.fundingSource === PurchaseFundingSource.CAJA) {
+      const openSession = await this.cashSessionsService.getCurrentOpenSessionForToday();
+      if (!openSession) {
+        const staleSession = await this.cashSessionsService.getCurrentOpenSession();
+        if (staleSession) {
+          throw new BadRequestException(
+            'Hay una caja abierta desde un día anterior sin cerrar. Ciérrala y abre una nueva caja de hoy, o registra esta compra como dinero externo.',
+          );
+        }
+        throw new BadRequestException(
+          'No hay una caja abierta - abre caja primero o registra esta compra como dinero externo',
+        );
+      }
+      cashSessionId = openSession.id;
+    }
+
+    const purchase = this.purchasesRepository.create({
+      total,
+      createdBy: username,
+      fundingSource: dto.fundingSource,
+      cashSessionId,
+    });
     const savedPurchase = await this.purchasesRepository.save(purchase);
 
     const purchaseItems = itemsData.map((item) =>
