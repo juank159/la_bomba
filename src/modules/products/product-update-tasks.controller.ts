@@ -9,15 +9,24 @@ import { UserRole } from '../users/entities/user.entity';
 import { AssignedRole } from './entities/product-update-task.entity';
 
 /**
- * Mapea el rol del usuario logueado al filtro `assignedRole` que debe aplicarse.
- * - SUPERVISOR ve solo sus tareas
- * - DIGITADOR ve solo las suyas
- * - ADMIN no tiene filtro (ve todo)
+ * Mapea el rol del usuario logueado (+ un filtro opcional que solo el admin
+ * puede pedir por query param) al filtro `assignedRole` que debe aplicarse.
+ * - SUPERVISOR ve solo sus tareas (ignora requestedRole - no puede ver las
+ *   del digitador ni pidiéndolo explícitamente).
+ * - DIGITADOR ve solo las suyas, mismo motivo.
+ * - ADMIN: sin requestedRole ve todo; con requestedRole ('supervisor' o
+ *   'digitador') ve solo las de ese rol - así "Tareas Colaboradores → X" en
+ *   el drawer puede pedirle al backend que filtre y pagine ya filtrado, en
+ *   vez de traer una página sin filtrar y filtrar en la pantalla (eso podía
+ *   dejar vacía la vista de un rol si el otro rol tenía más de `limit`
+ *   pendientes más viejas que las de ese rol).
  */
-function assignedRoleFilterFor(userRole: string): AssignedRole | undefined {
+function assignedRoleFilterFor(userRole: string, requestedRole?: string): AssignedRole | undefined {
   if (userRole === UserRole.SUPERVISOR) return AssignedRole.SUPERVISOR;
   if (userRole === UserRole.DIGITADOR) return AssignedRole.DIGITADOR;
-  return undefined; // admin u otro: sin filtro
+  if (requestedRole === AssignedRole.SUPERVISOR) return AssignedRole.SUPERVISOR;
+  if (requestedRole === AssignedRole.DIGITADOR) return AssignedRole.DIGITADOR;
+  return undefined; // admin sin filtro pedido: ve todo
 }
 
 @Controller('product-update-tasks')
@@ -38,8 +47,9 @@ export class ProductUpdateTasksController {
     @Request() req: any,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('assignedRole') assignedRole?: string,
   ) {
-    const filter = assignedRoleFilterFor(req.user?.role);
+    const filter = assignedRoleFilterFor(req.user?.role, assignedRole);
     return this.tasksService.getPendingTasks(page || 1, limit || 20, filter);
   }
 
@@ -49,8 +59,9 @@ export class ProductUpdateTasksController {
     @Request() req: any,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('assignedRole') assignedRole?: string,
   ) {
-    const filter = assignedRoleFilterFor(req.user?.role);
+    const filter = assignedRoleFilterFor(req.user?.role, assignedRole);
     return this.tasksService.getCompletedTasks(page || 1, limit || 20, filter);
   }
 
