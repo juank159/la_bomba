@@ -81,6 +81,24 @@ export class VegetableCashSessionsService {
     return this.sessionsRepository.save(session);
   }
 
+  /// Recalcula expectedAmount/difference de un turno YA CERRADO - se usa
+  /// cuando se edita o elimina una compra/gasto que pertenecía a ese turno
+  /// (ver VegetablesService.updatePurchase/deletePurchase), para que el
+  /// cuadre guardado no quede desactualizado respecto al valor corregido.
+  /// No hace nada si el turno sigue abierto (ahí expectedAmount se calcula
+  /// al vuelo cada vez, nunca queda "guardado" hasta que se cierra).
+  async recomputeClosedSessionTotals(sessionId: string): Promise<void> {
+    const session = await this.sessionsRepository.findOne({ where: { id: sessionId } });
+    if (!session || session.status !== CashSessionStatus.CLOSED) return;
+
+    const { cashSales, cashExpenses, cashPurchases } = await this.computeSessionTotals(sessionId);
+    const expectedAmount = Number(session.openingAmount) + cashSales - cashExpenses - cashPurchases;
+
+    session.expectedAmount = expectedAmount;
+    session.difference = Number(session.closingAmount) - expectedAmount;
+    await this.sessionsRepository.save(session);
+  }
+
   /// Sesión abierta ahora mismo (o null si la caja está cerrada), con los
   /// totales en vivo (solo efectivo) y el desglose por método de pago
   /// para mostrar antes de cerrar. `isStale` indica que la caja quedó
@@ -218,6 +236,7 @@ export class VegetableCashSessionsService {
       .select('COALESCE(SUM(purchase.total), 0)', 'sum')
       .where('purchase.cashSessionId = :sessionId', { sessionId })
       .andWhere('purchase.fundingSource = :source', { source: PurchaseFundingSource.CAJA })
+      .andWhere('purchase.isActive = true')
       .getRawOne<{ sum: string }>();
 
     return {

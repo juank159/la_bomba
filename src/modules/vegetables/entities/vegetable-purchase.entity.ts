@@ -42,6 +42,12 @@ export class VegetablePurchase {
   @Column({ name: 'cash_session_id', nullable: true })
   cashSessionId: string;
 
+  // Baja lógica: false = eliminada (sus movimientos de inventario ya se
+  // revirtieron - ver VegetablesService.deletePurchase). No se borra la
+  // fila para no perder el histórico de costos.
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
+
   @OneToMany(() => VegetablePurchaseItem, (item) => item.purchase, { cascade: true })
   items: VegetablePurchaseItem[];
 

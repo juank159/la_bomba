@@ -19,6 +19,7 @@ import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateVegetablePurchaseDto } from './dto/create-vegetable-purchase.dto';
+import { UpdateVegetablePurchaseDto } from './dto/update-vegetable-purchase.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -142,12 +143,22 @@ export class VegetablesController {
   }
 
   @Get('purchases')
-  findAllPurchases() {
-    return this.vegetablesService.findAllPurchases();
+  findAllPurchases(@Query('includeInactive') includeInactive?: string) {
+    return this.vegetablesService.findAllPurchases(includeInactive === 'true');
   }
 
   @Get('purchases/:id')
   findOnePurchase(@Param('id') id: string) {
     return this.vegetablesService.findOnePurchase(id);
+  }
+
+  @Patch('purchases/:id')
+  updatePurchase(@Param('id') id: string, @Body() dto: UpdateVegetablePurchaseDto, @Request() req) {
+    return this.vegetablesService.updatePurchase(id, dto, req.user.username);
+  }
+
+  @Delete('purchases/:id')
+  deletePurchase(@Param('id') id: string, @Request() req) {
+    return this.vegetablesService.deletePurchase(id, req.user.username);
   }
 }

@@ -18,6 +18,7 @@ import { CreateVegetableSaleDto } from './dto/create-vegetable-sale.dto';
 import { CreateVegetableOrderDto } from './dto/create-vegetable-order.dto';
 import { CreateStockMovementDto, CreatableStockMovementType } from './dto/create-stock-movement.dto';
 import { CreateVegetablePurchaseDto } from './dto/create-vegetable-purchase.dto';
+import { UpdateVegetablePurchaseDto } from './dto/update-vegetable-purchase.dto';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { VegetableCashSessionsService } from '../vegetable-cash-sessions/vegetable-cash-sessions.service';
 import { PaymentMethod } from '../credits/entities/payment-method.entity';
@@ -603,8 +604,9 @@ export class VegetablesService {
     return this.findOnePurchase(savedPurchase.id);
   }
 
-  async findAllPurchases(): Promise<VegetablePurchase[]> {
+  async findAllPurchases(includeInactive = false): Promise<VegetablePurchase[]> {
     return this.purchasesRepository.find({
+      where: includeInactive ? {} : { isActive: true },
       relations: ['items'],
       order: { createdAt: 'DESC' },
     });
@@ -621,5 +623,114 @@ export class VegetablesService {
     }
 
     return purchase;
+  }
+
+  /// Revierte en inventario lo que sumó cada línea de una compra (ej. al
+  /// editarla o eliminarla) - un movimiento ADJUSTMENT negativo por línea,
+  /// referenciando la compra. enforceNonNegative va en false a propósito:
+  /// si ya se vendió parte de lo comprado, corregir el valor de la compra
+  /// no debe bloquearse por eso (mismo criterio que ya se usa en ventas -
+  /// el stock puede quedar negativo como señal de "falta contar/ajustar").
+  private async reversePurchaseStock(
+    purchase: VegetablePurchase,
+    username: string,
+    reason: string,
+  ): Promise<void> {
+    for (const line of purchase.items) {
+      const item = await this.itemsRepository.findOne({ where: { id: line.vegetableItemId } });
+      if (!item) continue; // producto borrado después de la compra: no hay a quién revertirle stock
+      await this.applyStockMovement(item, {
+        type: StockMovementType.ADJUSTMENT,
+        quantity: -Number(line.quantity),
+        reason,
+        purchaseId: purchase.id,
+        createdBy: username,
+        enforceNonNegative: false,
+      });
+    }
+  }
+
+  /// Si la compra quedó ligada a un turno de caja YA CERRADO, ese turno
+  /// guardó un expectedAmount/difference "congelado" al momento del
+  /// cierre - hay que recalcularlo para que refleje el valor corregido.
+  /// Si el turno sigue abierto, no hace falta nada (se calcula al vuelo).
+  private async syncCashSessionIfClosed(cashSessionId: string | null | undefined): Promise<void> {
+    if (!cashSessionId) return;
+    await this.cashSessionsService.recomputeClosedSessionTotals(cashSessionId);
+  }
+
+  /// Corrige una compra ya registrada (ej. un valor mal digitado): reemplaza
+  /// sus líneas, revirtiendo primero el inventario que había sumado la
+  /// versión anterior y aplicando el de la nueva, y recalcula el total. No
+  /// permite cambiar fundingSource/cashSessionId (ver UpdateVegetablePurchaseDto).
+  async updatePurchase(id: string, dto: UpdateVegetablePurchaseDto, username: string): Promise<VegetablePurchase> {
+    const purchase = await this.findOnePurchase(id);
+    if (!purchase.isActive) {
+      throw new BadRequestException('No se puede editar una compra eliminada');
+    }
+
+    const itemIds = dto.items.map((i) => i.vegetableItemId);
+    const items = await this.itemsRepository.find({ where: { id: In(itemIds) } });
+    const itemsById = new Map(items.map((i) => [i.id, i]));
+    const missingId = itemIds.find((id) => !itemsById.has(id));
+    if (missingId) {
+      throw new BadRequestException(`Producto no encontrado: ${missingId}`);
+    }
+
+    // Revierte el inventario de las líneas viejas ANTES de tocar nada más.
+    await this.reversePurchaseStock(purchase, username, 'Corrección de compra editada');
+
+    let total = 0;
+    const itemsData = dto.items.map((line) => {
+      const item = itemsById.get(line.vegetableItemId)!;
+      const lineTotal = line.quantity * line.unitCost;
+      total += lineTotal;
+      return {
+        vegetableItemId: item.id,
+        description: item.name,
+        quantity: line.quantity,
+        unitCost: line.unitCost,
+        total: lineTotal,
+      };
+    });
+
+    await this.purchaseItemsRepository.delete({ purchaseId: id });
+    const newItems = itemsData.map((item) => this.purchaseItemsRepository.create({ purchaseId: id, ...item }));
+    await this.purchaseItemsRepository.save(newItems);
+
+    for (const line of itemsData) {
+      await this.applyStockMovement(itemsById.get(line.vegetableItemId)!, {
+        type: StockMovementType.IN,
+        quantity: line.quantity,
+        purchaseId: id,
+        createdBy: username,
+        enforceNonNegative: false,
+      });
+    }
+
+    purchase.total = total;
+    await this.purchasesRepository.save(purchase);
+
+    await this.syncCashSessionIfClosed(purchase.cashSessionId);
+
+    return this.findOnePurchase(id);
+  }
+
+  /// Elimina (baja lógica) una compra: revierte el inventario que había
+  /// sumado y la marca inactiva - deja de contar en reportes y en el
+  /// cuadre de caja (ver el filtro isActive en computeSessionTotals), pero
+  /// la fila queda para no perder el histórico de costos.
+  async deletePurchase(id: string, username: string): Promise<void> {
+    const purchase = await this.findOnePurchase(id);
+    if (!purchase.isActive) {
+      return; // ya estaba eliminada - idempotente
+    }
+
+    await this.reversePurchaseStock(purchase, username, 'Compra eliminada');
+
+    purchase.isActive = false;
+    await this.purchasesRepository.save(purchase);
+
+    await this.syncCashSessionIfClosed(purchase.cashSessionId);
   }
 }
