@@ -172,6 +172,31 @@ export class VegetableCashSessionsService {
     return this.computePaymentBreakdown(sessionId);
   }
 
+  /// Igual que findOne, pero con los mismos totales (ventas en efectivo,
+  /// gastos y compras de caja) que ya se muestran para el turno abierto -
+  /// computeSessionTotals no depende de que la caja esté abierta, así que
+  /// sirve igual para el historial de turnos ya cerrados.
+  async findOneWithTotals(
+    id: string,
+  ): Promise<VegetableCashSession & { cashSales: number; cashExpenses: number; cashPurchases: number }> {
+    const session = await this.findOne(id);
+    const totals = await this.computeSessionTotals(id);
+    return { ...session, ...totals };
+  }
+
+  /// Ventas del turno, una por una, para poder mostrar "1 de $X, 1 de $Y..."
+  /// en vez de solo el total agrupado por método de pago (ver
+  /// computePaymentBreakdown) - el frontend filtra por paymentMethodId al
+  /// tocar una fila del desglose.
+  async getSales(sessionId: string): Promise<VegetableSale[]> {
+    await this.findOne(sessionId); // 404 si no existe
+    return this.salesRepository.find({
+      where: { cashSessionId: sessionId },
+      relations: ['paymentMethod'],
+      order: { createdAt: 'ASC' },
+    });
+  }
+
   private async computeSessionTotals(sessionId: string): Promise<SessionTotals> {
     const salesResult = await this.salesRepository
       .createQueryBuilder('sale')
