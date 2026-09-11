@@ -708,8 +708,15 @@ export class VegetablesService {
       });
     }
 
-    purchase.total = total;
-    await this.purchasesRepository.save(purchase);
+    // OJO: NO usar purchasesRepository.save(purchase) acá. `purchase` se
+    // cargó al inicio de este método con relations:['items'] (las líneas
+    // VIEJAS, ya borradas arriba con purchaseItemsRepository.delete). Como
+    // VegetablePurchase.items tiene {cascade: true}, un save() del padre
+    // reinserta ("resucita") esas líneas viejas en cascada - incluyendo el
+    // producto que el usuario acaba de quitar - duplicando/corrompiendo la
+    // lista de items aunque el total sí quedara bien. update() apunta solo
+    // a la columna total, sin tocar la relación.
+    await this.purchasesRepository.update(id, { total });
 
     await this.syncCashSessionIfClosed(purchase.cashSessionId);
 
