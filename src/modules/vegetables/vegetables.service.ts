@@ -355,8 +355,9 @@ export class VegetablesService {
     return this.findOneSale(savedSale.id);
   }
 
-  async findAllSales(): Promise<VegetableSale[]> {
+  async findAllSales(includeInactive = false): Promise<VegetableSale[]> {
     return this.salesRepository.find({
+      where: includeInactive ? {} : { isActive: true },
       relations: ['items', 'paymentMethod'],
       order: { createdAt: 'DESC' },
     });
@@ -373,6 +374,46 @@ export class VegetablesService {
     }
 
     return sale;
+  }
+
+  /// Revierte en inventario lo que descontó cada línea de una venta (ej. al
+  /// eliminarla): un movimiento ADJUSTMENT positivo por línea, referenciando
+  /// la venta. Las líneas de venta libre no afectaron inventario, así que se
+  /// omiten (mismo criterio que reversePurchaseStock).
+  private async reverseSaleStock(sale: VegetableSale, username: string, reason: string): Promise<void> {
+    for (const line of sale.items) {
+      if (!line.vegetableItemId) continue; // venta libre: no afectó inventario
+      const item = await this.itemsRepository.findOne({ where: { id: line.vegetableItemId } });
+      if (!item) continue; // producto borrado después de la venta: no hay a quién revertirle stock
+      const soldAmount = Number(line.weightKg ?? line.quantity ?? 0);
+      if (soldAmount <= 0) continue;
+      await this.applyStockMovement(item, {
+        type: StockMovementType.ADJUSTMENT,
+        quantity: soldAmount,
+        reason,
+        saleId: sale.id,
+        createdBy: username,
+        enforceNonNegative: false,
+      });
+    }
+  }
+
+  /// Elimina (baja lógica) una venta: revierte el inventario que había
+  /// descontado y la marca inactiva - deja de contar en reportes y en el
+  /// cuadre de caja (ver el filtro isActive en VegetableCashSessionsService),
+  /// pero la fila queda para no perder el histórico.
+  async deleteSale(id: string, username: string): Promise<void> {
+    const sale = await this.findOneSale(id);
+    if (!sale.isActive) {
+      return; // ya estaba eliminada - idempotente
+    }
+
+    await this.reverseSaleStock(sale, username, 'Venta eliminada');
+
+    sale.isActive = false;
+    await this.salesRepository.save(sale);
+
+    await this.syncCashSessionIfClosed(sale.cashSessionId);
   }
 
   // ==========================================================================
@@ -533,7 +574,9 @@ export class VegetablesService {
   /// como registro de costo. Solo acepta productos ya existentes en el
   /// catálogo.
   async createPurchase(dto: CreateVegetablePurchaseDto, username: string): Promise<VegetablePurchase> {
-    const itemIds = dto.items.map((i) => i.vegetableItemId);
+    // Solo las líneas de catálogo traen vegetableItemId - las de compra
+    // libre (sin producto asociado) no participan de este lookup.
+    const itemIds = dto.items.map((i) => i.vegetableItemId).filter((id): id is string => !!id);
     const items = await this.itemsRepository.find({ where: { id: In(itemIds) } });
     const itemsById = new Map(items.map((i) => [i.id, i]));
 
@@ -544,7 +587,31 @@ export class VegetablesService {
 
     let total = 0;
     const itemsData = dto.items.map((line) => {
+      // Compra libre: sin producto de catálogo, monto y descripción a
+      // mano - no afecta inventario (ver el loop de applyStockMovement
+      // más abajo).
+      if (!line.vegetableItemId) {
+        if (!line.description?.trim() || !line.amount || line.amount <= 0) {
+          throw new BadRequestException(
+            'Una compra libre requiere descripción y un monto mayor a 0',
+          );
+        }
+        const lineTotal = line.amount;
+        total += lineTotal;
+
+        return {
+          vegetableItemId: null,
+          description: line.description.trim(),
+          quantity: null,
+          unitCost: null,
+          total: lineTotal,
+        };
+      }
+
       const item = itemsById.get(line.vegetableItemId)!;
+      if (!line.quantity || line.quantity <= 0 || line.unitCost == null) {
+        throw new BadRequestException(`${item.name} requiere cantidad y costo unitario`);
+      }
       const lineTotal = line.quantity * line.unitCost;
       total += lineTotal;
 
@@ -592,9 +659,10 @@ export class VegetablesService {
     await this.purchaseItemsRepository.save(purchaseItems);
 
     for (const line of itemsData) {
+      if (!line.vegetableItemId) continue; // compra libre: no hay inventario que sumar
       await this.applyStockMovement(itemsById.get(line.vegetableItemId)!, {
         type: StockMovementType.IN,
-        quantity: line.quantity,
+        quantity: line.quantity!,
         purchaseId: savedPurchase.id,
         createdBy: username,
         enforceNonNegative: true,
@@ -637,6 +705,7 @@ export class VegetablesService {
     reason: string,
   ): Promise<void> {
     for (const line of purchase.items) {
+      if (!line.vegetableItemId) continue; // compra libre: no afectó inventario
       const item = await this.itemsRepository.findOne({ where: { id: line.vegetableItemId } });
       if (!item) continue; // producto borrado después de la compra: no hay a quién revertirle stock
       await this.applyStockMovement(item, {
@@ -669,7 +738,7 @@ export class VegetablesService {
       throw new BadRequestException('No se puede editar una compra eliminada');
     }
 
-    const itemIds = dto.items.map((i) => i.vegetableItemId);
+    const itemIds = dto.items.map((i) => i.vegetableItemId).filter((id): id is string => !!id);
     const items = await this.itemsRepository.find({ where: { id: In(itemIds) } });
     const itemsById = new Map(items.map((i) => [i.id, i]));
     const missingId = itemIds.find((id) => !itemsById.has(id));
@@ -682,7 +751,21 @@ export class VegetablesService {
 
     let total = 0;
     const itemsData = dto.items.map((line) => {
+      if (!line.vegetableItemId) {
+        if (!line.description?.trim() || !line.amount || line.amount <= 0) {
+          throw new BadRequestException(
+            'Una compra libre requiere descripción y un monto mayor a 0',
+          );
+        }
+        const lineTotal = line.amount;
+        total += lineTotal;
+        return { vegetableItemId: null, description: line.description.trim(), quantity: null, unitCost: null, total: lineTotal };
+      }
+
       const item = itemsById.get(line.vegetableItemId)!;
+      if (!line.quantity || line.quantity <= 0 || line.unitCost == null) {
+        throw new BadRequestException(`${item.name} requiere cantidad y costo unitario`);
+      }
       const lineTotal = line.quantity * line.unitCost;
       total += lineTotal;
       return {
@@ -699,9 +782,10 @@ export class VegetablesService {
     await this.purchaseItemsRepository.save(newItems);
 
     for (const line of itemsData) {
+      if (!line.vegetableItemId) continue; // compra libre: no hay inventario que sumar
       await this.applyStockMovement(itemsById.get(line.vegetableItemId)!, {
         type: StockMovementType.IN,
-        quantity: line.quantity,
+        quantity: line.quantity!,
         purchaseId: id,
         createdBy: username,
         enforceNonNegative: false,

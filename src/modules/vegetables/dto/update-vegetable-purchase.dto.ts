@@ -1,18 +1,31 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsNumber, Min, ArrayMinSize } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, ValidateNested, IsNumber, IsOptional, Min, ArrayMinSize } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateVegetablePurchaseItemDto {
+  // Mismo patrón que CreateVegetablePurchaseItemDto: catálogo
+  // (vegetableItemId+quantity+unitCost) o compra libre (description+amount).
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  vegetableItemId: string;
+  vegetableItemId?: string;
 
+  @IsOptional()
   @IsNumber()
   @Min(0.001)
-  quantity: number;
+  quantity?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  unitCost: number;
+  unitCost?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  amount?: number;
 }
 
 // A propósito, editar una compra NO permite cambiar fundingSource/a qué

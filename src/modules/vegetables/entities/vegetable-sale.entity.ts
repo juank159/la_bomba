@@ -44,6 +44,12 @@ export class VegetableSale {
   @OneToMany(() => VegetableSaleItem, (item) => item.sale, { cascade: true })
   items: VegetableSaleItem[];
 
+  // Baja lógica: false = eliminada (su descuento de inventario ya se
+  // revirtió - ver VegetablesService.deleteSale). No se borra la fila para
+  // no perder el histórico de ventas.
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

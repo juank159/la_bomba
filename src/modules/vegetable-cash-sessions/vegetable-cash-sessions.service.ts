@@ -209,7 +209,7 @@ export class VegetableCashSessionsService {
   async getSales(sessionId: string): Promise<VegetableSale[]> {
     await this.findOne(sessionId); // 404 si no existe
     return this.salesRepository.find({
-      where: { cashSessionId: sessionId },
+      where: { cashSessionId: sessionId, isActive: true },
       relations: ['paymentMethod'],
       order: { createdAt: 'ASC' },
     });
@@ -222,6 +222,7 @@ export class VegetableCashSessionsService {
       .select('COALESCE(SUM(sale.total), 0)', 'sum')
       .where('sale.cashSessionId = :sessionId', { sessionId })
       .andWhere('pm.isCash = true')
+      .andWhere('sale.isActive = true')
       .getRawOne<{ sum: string }>();
 
     const expensesResult = await this.expensesRepository
@@ -256,6 +257,7 @@ export class VegetableCashSessionsService {
       .addSelect('COALESCE(SUM(sale.total), 0)', 'total')
       .addSelect('COUNT(sale.id)', 'count')
       .where('sale.cashSessionId = :sessionId', { sessionId })
+      .andWhere('sale.isActive = true')
       .groupBy('pm.id')
       .addGroupBy('pm.name')
       .addGroupBy('pm.isCash')

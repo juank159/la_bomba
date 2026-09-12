@@ -14,15 +14,18 @@ export class VegetablePurchaseItem {
   @Column({ name: 'purchase_id' })
   purchaseId: string;
 
-  @ManyToOne(() => VegetableItem)
+  @ManyToOne(() => VegetableItem, { nullable: true })
   @JoinColumn({ name: 'vegetable_item_id' })
   vegetableItem: VegetableItem;
 
-  @Column({ name: 'vegetable_item_id' })
-  vegetableItemId: string;
+  // Nullable: una línea de "compra libre" (ver VegetablesService.createPurchase)
+  // no referencia ningún producto del catálogo ni afecta inventario.
+  @Column({ name: 'vegetable_item_id', nullable: true })
+  vegetableItemId: string | null;
 
   // Snapshot del nombre al momento de la compra (si el producto se
-  // renombra después, el histórico no cambia con él).
+  // renombra después, el histórico no cambia con él) - o la descripción
+  // libre digitada a mano si es una compra libre.
   @Column()
   description: string;
 
@@ -30,12 +33,15 @@ export class VegetablePurchaseItem {
   // de precio fijo (mismo criterio que vegetable_sale_items.weight_kg/quantity,
   // pero acá se guarda como un solo campo porque la compra siempre suma
   // exactamente lo que dice la etiqueta - no depende de una lectura de báscula).
-  @Column('decimal', { precision: 10, scale: 3 })
-  quantity: number;
+  // Null en una línea de compra libre (no hay cantidad de catálogo que registrar).
+  @Column('decimal', { precision: 10, scale: 3, nullable: true })
+  quantity: number | null;
 
   // Costo pagado por kg o por unidad, según el tipo de precio del producto.
-  @Column('decimal', { name: 'unit_cost', precision: 10, scale: 2 })
-  unitCost: number;
+  // Null en una línea de compra libre (el total ya viene dado, no se
+  // calcula a partir de cantidad*costo unitario).
+  @Column('decimal', { name: 'unit_cost', precision: 10, scale: 2, nullable: true })
+  unitCost: number | null;
 
   @Column('decimal', { precision: 10, scale: 2 })
   total: number;

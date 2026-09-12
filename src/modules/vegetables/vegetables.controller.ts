@@ -93,13 +93,18 @@ export class VegetablesController {
   }
 
   @Get('sales')
-  findAllSales() {
-    return this.vegetablesService.findAllSales();
+  findAllSales(@Query('includeInactive') includeInactive?: string) {
+    return this.vegetablesService.findAllSales(includeInactive === 'true');
   }
 
   @Get('sales/:id')
   findOneSale(@Param('id') id: string) {
     return this.vegetablesService.findOneSale(id);
+  }
+
+  @Delete('sales/:id')
+  deleteSale(@Param('id') id: string, @Request() req) {
+    return this.vegetablesService.deleteSale(id, req.user.username);
   }
 
   // ---- Pedidos ----
