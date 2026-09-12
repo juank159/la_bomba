@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { CorresponsalService } from './corresponsal.service';
 import { CreateCorresponsalEntryDto } from './dto/create-corresponsal-entry.dto';
+import { UpdateCorresponsalEntryDto } from './dto/update-corresponsal-entry.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -20,6 +21,11 @@ export class CorresponsalController {
   @Get()
   findAll() {
     return this.corresponsalService.findAll();
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateCorresponsalEntryDto) {
+    return this.corresponsalService.update(id, dto);
   }
 
   @Delete(':id')

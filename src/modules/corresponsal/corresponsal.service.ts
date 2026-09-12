@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CorresponsalEntry } from './entities/corresponsal-entry.entity';
 import { CreateCorresponsalEntryDto } from './dto/create-corresponsal-entry.dto';
+import { UpdateCorresponsalEntryDto } from './dto/update-corresponsal-entry.dto';
 
 @Injectable()
 export class CorresponsalService {
@@ -35,6 +36,12 @@ export class CorresponsalService {
       throw new NotFoundException(`Registro de corresponsal con ID ${id} no encontrado`);
     }
     return entry;
+  }
+
+  async update(id: string, dto: UpdateCorresponsalEntryDto): Promise<CorresponsalEntry> {
+    const entry = await this.findOne(id);
+    Object.assign(entry, dto);
+    return this.entriesRepository.save(entry);
   }
 
   async remove(id: string): Promise<void> {

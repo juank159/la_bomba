@@ -3,9 +3,7 @@ import { User } from '../../users/entities/user.entity';
 
 /// Comisión cobrada por el servicio de corresponsal bancario (ej. alguien
 /// retira $1.000.000 y se le cobra $1.000 de comisión - eso $1.000 es lo
-/// que se registra acá como ingreso). Módulo pequeño a propósito: solo
-/// monto + nota opcional, sin editar - si se registró mal, se borra y se
-/// vuelve a registrar.
+/// que se registra acá como ingreso). Solo monto + nota opcional.
 @Entity('corresponsal_entries')
 export class CorresponsalEntry {
   @PrimaryGeneratedColumn('uuid')
