@@ -23,10 +23,14 @@ export class Credit {
   @Column()
   description: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  // precision 15 (no 10): numeric(10,2) tenía un tope de $99.999.999,99 -
+  // un cliente que se acercó a ese límite sufrió un desbordamiento
+  // numérico silencioso al intentar superarlo (ver credits.service.ts,
+  // addAmountToCredit). numeric(15,2) sube el tope a ~$9.99 billones.
+  @Column({ type: 'decimal', precision: 15, scale: 2 })
   totalAmount: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   paidAmount: number;
 
   @Column({

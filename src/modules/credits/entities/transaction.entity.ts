@@ -27,7 +27,9 @@ export class CreditTransaction {
   })
   type: TransactionType;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  // precision 15 (no 10): ver nota en credit.entity.ts (totalAmount) sobre
+  // el desbordamiento numérico que causó numeric(10,2).
+  @Column({ type: 'decimal', precision: 15, scale: 2 })
   amount: number;
 
   @Column({ type: 'text', nullable: true })
@@ -42,7 +44,7 @@ export class CreditTransaction {
   paymentMethodId: string;
 
   // Balance after this transaction (saldo pendiente después de esta transacción)
-  @Column({ name: 'balance_after', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'balance_after', type: 'decimal', precision: 15, scale: 2, nullable: true })
   balanceAfter: number;
 
   // Traceability - who made this transaction

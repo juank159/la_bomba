@@ -13,7 +13,9 @@ export class Payment {
   @Column({ name: 'credit_id' })
   creditId: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  // precision 15 (no 10): ver nota en credit.entity.ts (totalAmount) sobre
+  // el desbordamiento numérico que causó numeric(10,2).
+  @Column({ type: 'decimal', precision: 15, scale: 2 })
   amount: number;
 
   @Column({ nullable: true })

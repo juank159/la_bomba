@@ -37,9 +37,11 @@ export class ClientBalanceTransaction {
   })
   type: BalanceTransactionType;
 
+  // precision 15 (no 10): ver nota en credit.entity.ts (totalAmount) sobre
+  // el desbordamiento numérico que causó numeric(10,2).
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 15,
     scale: 2,
   })
   amount: number;
@@ -50,7 +52,7 @@ export class ClientBalanceTransaction {
   // Saldo después de esta transacción (para historial)
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 15,
     scale: 2,
     name: 'balance_after',
   })

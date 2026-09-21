@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, MoreThan } from 'typeorm';
+import { Repository, LessThan, MoreThan, DataSource } from 'typeorm';
 import { Credit, CreditStatus } from './entities/credit.entity';
 import { Payment } from './entities/payment.entity';
 import { CreditTransaction, TransactionType } from './entities/transaction.entity';
@@ -32,6 +32,7 @@ export class CreditsService {
     private usersRepository: Repository<User>,
     @Inject(forwardRef(() => ClientBalanceService))
     private clientBalanceService: ClientBalanceService,
+    private dataSource: DataSource,
   ) {}
 
   async create(createCreditDto: CreateCreditDto, username: string): Promise<Credit> {
@@ -121,43 +122,57 @@ export class CreditsService {
 
             console.log(`✅ [Credits] Saldo a favor de $${balanceToUse} aplicado exitosamente`);
 
-            // Crear un "pago" virtual que represente el uso del saldo
-            const balancePayment = this.paymentsRepository.create({
-              creditId: savedCredit.id,
-              amount: balanceToUse,
-              description: `Abono de saldo a favor`,
-              createdBy: username,
-            });
-            await this.paymentsRepository.save(balancePayment);
+            // CRÍTICO: pago virtual + transacción + actualización del
+            // crédito deben ser atómicos (misma razón que
+            // addAmountToCredit/addPayment).
+            const queryRunner = this.dataSource.createQueryRunner();
+            await queryRunner.connect();
+            await queryRunner.startTransaction();
 
-            // Registrar transacción de pago con saldo
-            const paymentTransaction = this.transactionsRepository.create({
-              creditId: savedCredit.id,
-              type: TransactionType.PAYMENT,
-              amount: balanceToUse,
-              description: `Abono de saldo a favor`,
-              paymentMethodId: null, // No aplica método de pago para saldo a favor
-              createdBy: username,
-              balanceAfter: remainingAmount - balanceToUse,
-            });
-            await this.transactionsRepository.save(paymentTransaction);
+            try {
+              // Crear un "pago" virtual que represente el uso del saldo
+              const balancePayment = queryRunner.manager.create(Payment, {
+                creditId: savedCredit.id,
+                amount: balanceToUse,
+                description: `Abono de saldo a favor`,
+                createdBy: username,
+              });
+              await queryRunner.manager.save(Payment, balancePayment);
 
-            // Actualizar el crédito
-            const newPaidAmount = balanceToUse;
-            const newStatus = newPaidAmount >= Number(savedCredit.totalAmount) ? CreditStatus.PAID : CreditStatus.PENDING;
+              // Registrar transacción de pago con saldo
+              const paymentTransaction = queryRunner.manager.create(CreditTransaction, {
+                creditId: savedCredit.id,
+                type: TransactionType.PAYMENT,
+                amount: balanceToUse,
+                description: `Abono de saldo a favor`,
+                paymentMethodId: null, // No aplica método de pago para saldo a favor
+                createdBy: username,
+                balanceAfter: remainingAmount - balanceToUse,
+              });
+              await queryRunner.manager.save(CreditTransaction, paymentTransaction);
 
-            await this.creditsRepository
-              .createQueryBuilder()
-              .update(Credit)
-              .set({
-                paidAmount: newPaidAmount,
-                status: newStatus,
-                updatedBy: username,
-              })
-              .where('id = :id', { id: savedCredit.id })
-              .execute();
+              // Actualizar el crédito
+              const newPaidAmount = balanceToUse;
+              const newStatus = newPaidAmount >= Number(savedCredit.totalAmount) ? CreditStatus.PAID : CreditStatus.PENDING;
 
-            console.log(`✅ [Credits] Crédito actualizado. Pagado: ${newPaidAmount}, Estado: ${newStatus}`);
+              await queryRunner.manager.update(
+                Credit,
+                { id: savedCredit.id },
+                {
+                  paidAmount: newPaidAmount,
+                  status: newStatus,
+                  updatedBy: username,
+                },
+              );
+
+              await queryRunner.commitTransaction();
+              console.log(`✅ [Credits] Crédito actualizado. Pagado: ${newPaidAmount}, Estado: ${newStatus}`);
+            } catch (txError) {
+              await queryRunner.rollbackTransaction();
+              throw txError;
+            } finally {
+              await queryRunner.release();
+            }
           }
         } else {
           console.log(`ℹ️ [Credits] Cliente no tiene saldo a favor disponible`);
@@ -280,45 +295,60 @@ export class CreditsService {
 
     console.log(`✅ [Credits] Saldo a favor de $${balanceToUse} usado en client_balance_transactions`);
 
-    // Crear un "pago" que represente el uso del saldo
-    const balancePayment = this.paymentsRepository.create({
-      creditId: creditId,
-      amount: balanceToUse,
-      description: `Abono de saldo a favor`,
-      createdBy: username,
-    });
-    await this.paymentsRepository.save(balancePayment);
+    // CRÍTICO: pago + transacción + actualización del crédito deben ser
+    // atómicos (misma razón que addAmountToCredit/addPayment).
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    console.log(`✅ [Credits] Pago registrado en tabla payments`);
+    let newPaidAmount: number;
+    let newStatus: CreditStatus;
 
-    // Registrar transacción de pago con saldo
-    const paymentTransaction = this.transactionsRepository.create({
-      creditId: creditId,
-      type: TransactionType.PAYMENT,
-      amount: balanceToUse,
-      description: `Abono de saldo a favor`,
-      paymentMethodId: null,
-      createdBy: username,
-      balanceAfter: remainingAmount - balanceToUse,
-    });
-    await this.transactionsRepository.save(paymentTransaction);
+    try {
+      // Crear un "pago" que represente el uso del saldo
+      const balancePayment = queryRunner.manager.create(Payment, {
+        creditId: creditId,
+        amount: balanceToUse,
+        description: `Abono de saldo a favor`,
+        createdBy: username,
+      });
+      await queryRunner.manager.save(Payment, balancePayment);
+      console.log(`✅ [Credits] Pago registrado en tabla payments`);
 
-    console.log(`✅ [Credits] Transacción registrada en credit_transactions`);
+      // Registrar transacción de pago con saldo
+      const paymentTransaction = queryRunner.manager.create(CreditTransaction, {
+        creditId: creditId,
+        type: TransactionType.PAYMENT,
+        amount: balanceToUse,
+        description: `Abono de saldo a favor`,
+        paymentMethodId: null,
+        createdBy: username,
+        balanceAfter: remainingAmount - balanceToUse,
+      });
+      await queryRunner.manager.save(CreditTransaction, paymentTransaction);
+      console.log(`✅ [Credits] Transacción registrada en credit_transactions`);
 
-    // Actualizar el crédito
-    const newPaidAmount = Number(credit.paidAmount) + balanceToUse;
-    const newStatus = newPaidAmount >= Number(credit.totalAmount) ? CreditStatus.PAID : CreditStatus.PENDING;
+      // Actualizar el crédito
+      newPaidAmount = Number(credit.paidAmount) + balanceToUse;
+      newStatus = newPaidAmount >= Number(credit.totalAmount) ? CreditStatus.PAID : CreditStatus.PENDING;
 
-    await this.creditsRepository
-      .createQueryBuilder()
-      .update(Credit)
-      .set({
-        paidAmount: newPaidAmount,
-        status: newStatus,
-        updatedBy: username,
-      })
-      .where('id = :id', { id: creditId })
-      .execute();
+      await queryRunner.manager.update(
+        Credit,
+        { id: creditId },
+        {
+          paidAmount: newPaidAmount,
+          status: newStatus,
+          updatedBy: username,
+        },
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
 
     console.log(`✅ [Credits] Crédito actualizado. Total pagado: ${newPaidAmount}, Estado: ${newStatus}`);
 
@@ -363,27 +393,44 @@ export class CreditsService {
     const newTotalAmount = Number(credit.totalAmount) + Number(amount);
     const newRemainingAmount = Number(credit.remainingAmount) + Number(amount);
 
-    // Register transaction con el saldo después de la operación
-    const transaction = this.transactionsRepository.create({
-      creditId: id,
-      type: TransactionType.DEBT_INCREASE,
-      amount: amount,
-      description: description,
-      paymentMethodId: null, // No aplica para aumentos de deuda
-      createdBy: username,
-      balanceAfter: newRemainingAmount, // Saldo pendiente después de aumentar la deuda
-    });
-    await this.transactionsRepository.save(transaction);
+    // CRÍTICO: registrar la transacción y actualizar el total del crédito
+    // deben ser una sola operación atómica. Antes eran dos escrituras
+    // separadas - si la segunda fallaba (ej. un desbordamiento numérico),
+    // la primera ya había quedado guardada, dejando una transacción
+    // "fantasma" en el historial que nunca se reflejó en el saldo real.
+    // Con QueryRunner, si cualquiera de las dos falla, NINGUNA se guarda.
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    await this.creditsRepository
-      .createQueryBuilder()
-      .update(Credit)
-      .set({
-        totalAmount: newTotalAmount,
-        updatedBy: username,
-      })
-      .where('id = :id', { id })
-      .execute();
+    try {
+      const transaction = queryRunner.manager.create(CreditTransaction, {
+        creditId: id,
+        type: TransactionType.DEBT_INCREASE,
+        amount: amount,
+        description: description,
+        paymentMethodId: null, // No aplica para aumentos de deuda
+        createdBy: username,
+        balanceAfter: newRemainingAmount, // Saldo pendiente después de aumentar la deuda
+      });
+      await queryRunner.manager.save(CreditTransaction, transaction);
+
+      await queryRunner.manager.update(
+        Credit,
+        { id },
+        {
+          totalAmount: newTotalAmount,
+          updatedBy: username,
+        },
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
 
     return this.findOne(id);
   }
@@ -439,52 +486,67 @@ export class CreditsService {
         - Exceso (saldo a favor): $${overpaymentAmount}`);
     }
 
-    // Registrar el pago completo (incluyendo el sobrepago)
-    const payment = this.paymentsRepository.create({
-      ...createPaymentDto,
-      creditId,
-      createdBy: username,
-    });
-
-    await this.paymentsRepository.save(payment);
-
     // Calcular el nuevo saldo pendiente después del pago efectivo
     const newRemainingBalance = remainingAmount - effectivePaymentAmount;
 
-    // Register transaction con el saldo después del pago
-    const transaction = this.transactionsRepository.create({
-      creditId: creditId,
-      type: TransactionType.PAYMENT,
-      amount: paymentAmount, // Registramos el monto total pagado
-      description: createPaymentDto.description || 'Pago',
-      paymentMethodId: createPaymentDto.paymentMethodId,
-      createdBy: username,
-      balanceAfter: newRemainingBalance, // Saldo pendiente después del pago
-    });
-    await this.transactionsRepository.save(transaction);
+    // CRÍTICO: registrar el pago, la transacción y actualizar el crédito
+    // deben ser una sola operación atómica (ver nota en addAmountToCredit
+    // sobre transacciones "fantasma" si una escritura falla y las demás
+    // ya se guardaron).
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Calculate total paid amount by summing all payments
-    const result = await this.paymentsRepository
-      .createQueryBuilder('payment')
-      .select('SUM(payment.amount)', 'total')
-      .where('payment.creditId = :creditId', { creditId })
-      .andWhere('payment.deleted_at IS NULL')
-      .getRawOne();
+    try {
+      // Registrar el pago completo (incluyendo el sobrepago)
+      const payment = queryRunner.manager.create(Payment, {
+        ...createPaymentDto,
+        creditId,
+        createdBy: username,
+      });
+      await queryRunner.manager.save(Payment, payment);
 
-    const newPaidAmount = parseFloat(result.total) || 0;
-    const newStatus = newPaidAmount >= Number(credit.totalAmount) ? CreditStatus.PAID : credit.status;
+      // Register transaction con el saldo después del pago
+      const transaction = queryRunner.manager.create(CreditTransaction, {
+        creditId: creditId,
+        type: TransactionType.PAYMENT,
+        amount: paymentAmount, // Registramos el monto total pagado
+        description: createPaymentDto.description || 'Pago',
+        paymentMethodId: createPaymentDto.paymentMethodId,
+        createdBy: username,
+        balanceAfter: newRemainingBalance, // Saldo pendiente después del pago
+      });
+      await queryRunner.manager.save(CreditTransaction, transaction);
 
-    // Use QueryBuilder to update directly without loading relations
-    await this.creditsRepository
-      .createQueryBuilder()
-      .update(Credit)
-      .set({
-        paidAmount: newPaidAmount,
-        status: newStatus,
-        updatedBy: username,
-      })
-      .where('id = :id', { id: creditId })
-      .execute();
+      // Calculate total paid amount by summing all payments (dentro de la
+      // misma transacción, para que vea el pago recién insertado)
+      const result = await queryRunner.manager
+        .createQueryBuilder(Payment, 'payment')
+        .select('SUM(payment.amount)', 'total')
+        .where('payment.creditId = :creditId', { creditId })
+        .andWhere('payment.deleted_at IS NULL')
+        .getRawOne();
+
+      const newPaidAmount = parseFloat(result.total) || 0;
+      const newStatus = newPaidAmount >= Number(credit.totalAmount) ? CreditStatus.PAID : credit.status;
+
+      await queryRunner.manager.update(
+        Credit,
+        { id: creditId },
+        {
+          paidAmount: newPaidAmount,
+          status: newStatus,
+          updatedBy: username,
+        },
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
 
     // 💰 Si hay sobrepago, depositarlo como saldo a favor del cliente
     if (overpaymentAmount > 0) {
@@ -536,31 +598,44 @@ export class CreditsService {
       throw new NotFoundException(`Payment with ID ${paymentId} not found`);
     }
 
-    payment.deletedBy = username;
-    await this.paymentsRepository.save(payment);
-    await this.paymentsRepository.softRemove(payment);
+    // CRÍTICO: borrar el pago y recalcular el total pagado del crédito
+    // deben ser atómicos (misma razón que addAmountToCredit/addPayment).
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Calculate total paid amount by summing all remaining payments
-    const result = await this.paymentsRepository
-      .createQueryBuilder('payment')
-      .select('SUM(payment.amount)', 'total')
-      .where('payment.creditId = :creditId', { creditId })
-      .andWhere('payment.deleted_at IS NULL')
-      .getRawOne();
+    try {
+      payment.deletedBy = username;
+      await queryRunner.manager.save(Payment, payment);
+      await queryRunner.manager.softRemove(Payment, payment);
 
-    const newPaidAmount = parseFloat(result.total) || 0;
+      // Calculate total paid amount by summing all remaining payments
+      const result = await queryRunner.manager
+        .createQueryBuilder(Payment, 'payment')
+        .select('SUM(payment.amount)', 'total')
+        .where('payment.creditId = :creditId', { creditId })
+        .andWhere('payment.deleted_at IS NULL')
+        .getRawOne();
 
-    // Use QueryBuilder to update directly without loading relations
-    await this.creditsRepository
-      .createQueryBuilder()
-      .update(Credit)
-      .set({
-        paidAmount: newPaidAmount,
-        status: CreditStatus.PENDING,
-        updatedBy: username,
-      })
-      .where('id = :id', { id: creditId })
-      .execute();
+      const newPaidAmount = parseFloat(result.total) || 0;
+
+      await queryRunner.manager.update(
+        Credit,
+        { id: creditId },
+        {
+          paidAmount: newPaidAmount,
+          status: CreditStatus.PENDING,
+          updatedBy: username,
+        },
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
 
     return this.findOne(creditId);
   }

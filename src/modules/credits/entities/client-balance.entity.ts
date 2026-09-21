@@ -27,9 +27,11 @@ export class ClientBalance {
   // Positivo: Cliente tiene saldo a favor (la tienda le debe)
   // Cero: Sin saldo
   // Nota: No permitimos saldo negativo (las deudas se manejan con Credits)
+  // precision 15 (no 10): ver nota en credit.entity.ts (totalAmount) sobre
+  // el desbordamiento numérico que causó numeric(10,2).
   @Column({
     type: 'decimal',
-    precision: 10,
+    precision: 15,
     scale: 2,
     default: 0,
   })
