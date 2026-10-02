@@ -51,14 +51,23 @@ export class ProductsController {
    * Los endpoints de revisión de productos temporales aceptan SUPERVISOR,
    * DIGITADOR y ADMIN. Como solo hay dos "carriles" independientes de
    * confirmación (completedBySupervisor / completedByDigitador), cuando
-   * quien llama es ADMIN se lo trata como supervisor para efectos de
-   * completar (mismo comportamiento que tenía el endpoint antes de este
-   * cambio, cuando admin y supervisor compartían el mismo carril).
+   * quien llama es ADMIN confirma en el carril que indica `asRole` (la lista
+   * que está mirando: "Tareas Colaboradores → Supervisor/Digitador"). Sin
+   * `asRole` se lo trata como supervisor. Antes el admin SIEMPRE confirmaba
+   * como supervisor: al completar desde la lista del digitador no quedaba
+   * registrado nada en ese carril y la tarea reaparecía al recargar.
+   * `asRole` solo aplica para ADMIN; supervisor y digitador confirman
+   * siempre en su propio carril.
    */
   private effectiveReviewerRole(
     role: UserRole,
+    asRole?: string,
   ): UserRole.SUPERVISOR | UserRole.DIGITADOR {
-    return role === UserRole.DIGITADOR ? UserRole.DIGITADOR : UserRole.SUPERVISOR;
+    if (role === UserRole.DIGITADOR) return UserRole.DIGITADOR;
+    if (role === UserRole.ADMIN && asRole === UserRole.DIGITADOR) {
+      return UserRole.DIGITADOR;
+    }
+    return UserRole.SUPERVISOR;
   }
 
   @Post()
@@ -167,9 +176,10 @@ export class ProductsController {
     @Param("id") productId: string,
     @Body("barcode") barcode: string,
     @Request() req: any,
+    @Body("asRole") asRole?: string,
   ) {
     const reviewerId = req.user.userId;
-    const reviewerRole = this.effectiveReviewerRole(req.user?.role);
+    const reviewerRole = this.effectiveReviewerRole(req.user?.role, asRole);
     console.log('🔄 PATCH /products/by-id/' + productId + '/barcode called');
     console.log('📦 Barcode to update:', barcode);
     console.log('👤 Reviewer:', { reviewerId, reviewerRole });
@@ -236,11 +246,11 @@ export class ProductsController {
   @Roles(UserRole.SUPERVISOR, UserRole.DIGITADOR, UserRole.ADMIN)
   async completeTemporaryProductByReviewer(
     @Param("id") id: string,
-    @Body() body: { notes?: string; barcode?: string },
+    @Body() body: { notes?: string; barcode?: string; asRole?: string },
     @Request() req: any,
   ) {
     const reviewerId = req.user.userId;
-    const reviewerRole = this.effectiveReviewerRole(req.user?.role);
+    const reviewerRole = this.effectiveReviewerRole(req.user?.role, body.asRole);
     console.log('🔍 Complete temporary product by reviewer:', {
       id,
       reviewerId,
@@ -262,11 +272,11 @@ export class ProductsController {
   @Roles(UserRole.SUPERVISOR, UserRole.DIGITADOR, UserRole.ADMIN)
   async updateProductBarcodeFromTemporary(
     @Param("id") temporaryProductId: string,
-    @Body() body: { barcode: string; notes?: string },
+    @Body() body: { barcode: string; notes?: string; asRole?: string },
     @Request() req: any,
   ) {
     const reviewerId = req.user.userId;
-    const reviewerRole = this.effectiveReviewerRole(req.user?.role);
+    const reviewerRole = this.effectiveReviewerRole(req.user?.role, body.asRole);
     console.log('🔍 Update product barcode from temporary:', {
       temporaryProductId,
       reviewerId,

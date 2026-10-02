@@ -815,6 +815,29 @@ export class ProductsService {
   ): Promise<TemporaryProduct> {
     const temporaryProduct = await this.findTemporaryProduct(id);
 
+    const alreadyCompletedByThisRole =
+      reviewerRole === UserRole.SUPERVISOR
+        ? !!temporaryProduct.completedBySupervisor
+        : !!temporaryProduct.completedByDigitador;
+
+    // Idempotente: si este rol ya confirmó (doble clic, reintento, o el
+    // producto ya quedó COMPLETED), se devuelve el estado actual en vez de
+    // fallar - el resultado que espera quien llama ya está aplicado.
+    if (
+      alreadyCompletedByThisRole ||
+      temporaryProduct.status === TemporaryProductStatus.COMPLETED
+    ) {
+      console.log(`ℹ️ Producto temporal ya confirmado por ${reviewerRole}`, { id });
+      return this.temporaryProductsRepository.findOne({
+        where: { id: temporaryProduct.id },
+        relations: [
+          'completedByAdminUser',
+          'completedBySupervisorUser',
+          'completedByDigitadorUser',
+        ],
+      });
+    }
+
     if (
       temporaryProduct.status !== TemporaryProductStatus.PENDING_SUPERVISOR
     ) {
@@ -823,15 +846,9 @@ export class ProductsService {
       );
     }
 
-    const alreadyCompletedByThisRole =
-      reviewerRole === UserRole.SUPERVISOR
-        ? !!temporaryProduct.completedBySupervisor
-        : !!temporaryProduct.completedByDigitador;
-
-    if (alreadyCompletedByThisRole) {
-      throw new NotFoundException(
-        `Ya completaste esta tarea anteriormente como ${reviewerRole}`
-      );
+    const newBarcode = barcode && barcode.trim() ? barcode.trim() : null;
+    if (newBarcode) {
+      await this.assertBarcodeAvailable(newBarcode, temporaryProduct.productId);
     }
 
     console.log(`📦 Completing temporary product by ${reviewerRole}:`, {
@@ -842,9 +859,9 @@ export class ProductsService {
       productAlreadyExists: !!temporaryProduct.productId,
     });
 
-    if (barcode && barcode.trim() && !temporaryProduct.barcode) {
-      console.log('🔍 Setting barcode to', barcode.trim());
-      temporaryProduct.barcode = barcode.trim();
+    if (newBarcode && newBarcode !== temporaryProduct.barcode) {
+      console.log('🔍 Setting barcode to', newBarcode);
+      temporaryProduct.barcode = newBarcode;
     }
 
     // El producto real solo se crea la PRIMERA vez que alguien completa
@@ -854,7 +871,9 @@ export class ProductsService {
 
       const newProduct = this.productsRepository.create({
         description: temporaryProduct.name,
-        barcode: temporaryProduct.barcode || '',
+        // null (no ''): barcode es único, y dos productos sin código con ''
+        // chocarían entre sí.
+        barcode: temporaryProduct.barcode || null,
         precioA: temporaryProduct.precioA || 0,
         precioB: temporaryProduct.precioB || 0,
         precioC: temporaryProduct.precioC || 0,
@@ -871,11 +890,11 @@ export class ProductsService {
         description: savedRealProduct.description,
         barcode: savedRealProduct.barcode,
       });
-    } else if (barcode && barcode.trim()) {
-      // El producto real ya existe (lo creó el otro rol): si este barcode es
-      // nuevo, lo aplicamos también sobre el producto real.
+    } else if (newBarcode) {
+      // El producto real ya existe (lo creó el admin o el otro rol): el
+      // barcode confirmado se aplica también sobre el producto real.
       await this.productsRepository.update(temporaryProduct.productId, {
-        barcode: temporaryProduct.barcode,
+        barcode: newBarcode,
       });
     }
 
@@ -904,6 +923,19 @@ export class ProductsService {
     }
 
     await this.temporaryProductsRepository.save(temporaryProduct);
+
+    // Las tareas (ProductUpdateTask) de este mismo rol sobre el producto
+    // también quedan resueltas con esta confirmación.
+    if (temporaryProduct.productId) {
+      await this.completePendingTasksForRole(
+        temporaryProduct.productId,
+        reviewerId,
+        reviewerRole,
+        newBarcode
+          ? `Código de barras confirmado: ${newBarcode}`
+          : 'Producto nuevo confirmado',
+      );
+    }
 
     // Reload product with user relations
     const savedProduct = await this.temporaryProductsRepository.findOne({
@@ -1202,9 +1234,43 @@ export class ProductsService {
       console.log('ℹ️ No temporary product found for this product');
     }
 
-    // Completar SOLO las tareas (ProductUpdateTask) asignadas a este mismo
-    // rol. Antes se completaban TODAS las tareas pendientes del producto sin
-    // importar el rol, lo que terminaba completando tareas del otro rol.
+    await this.completePendingTasksForRole(
+      productId,
+      reviewerId,
+      reviewerRole,
+      `Código de barras agregado: ${barcode}`,
+    );
+
+    return updatedProduct;
+  }
+
+  /**
+   * Verifica que el código de barras no pertenezca ya a OTRO producto.
+   */
+  private async assertBarcodeAvailable(
+    barcode: string,
+    ownProductId?: string,
+  ): Promise<void> {
+    const conflictingProduct = await this.productsRepository.findOne({
+      where: { barcode },
+    });
+    if (conflictingProduct && conflictingProduct.id !== ownProductId) {
+      throw new ConflictException(
+        `El código de barras ${barcode} ya pertenece a otro producto: "${conflictingProduct.description}". Verifica el código antes de continuar.`,
+      );
+    }
+  }
+
+  /**
+   * Completa SOLO las tareas (ProductUpdateTask) pendientes del producto que
+   * están asignadas al rol indicado - nunca las del otro rol.
+   */
+  private async completePendingTasksForRole(
+    productId: string,
+    reviewerId: string,
+    reviewerRole: UserRole.SUPERVISOR | UserRole.DIGITADOR,
+    note: string,
+  ): Promise<void> {
     const pendingTasks = (
       await this.tasksService.getPendingTasksByProductId(productId)
     ).filter((task) => {
@@ -1215,27 +1281,21 @@ export class ProductsService {
       return taskRole === reviewerRole;
     });
 
-    if (pendingTasks && pendingTasks.length > 0) {
-      console.log(`📝 Found ${pendingTasks.length} pending task(s) to complete for ${reviewerRole}`);
-
-      for (const task of pendingTasks) {
-        try {
-          await this.tasksService.completeTask(
-            task.id,
-            { notes: `Código de barras agregado: ${barcode}` },
-            reviewerId,
-          );
-          console.log(`✅ Task ${task.id} completed`);
-        } catch (error) {
-          console.error(`⚠️ Failed to complete task ${task.id}:`, error);
-          // Continue with other tasks even if one fails
-        }
-      }
-    } else {
+    if (pendingTasks.length === 0) {
       console.log('ℹ️ No pending tasks found for this role on this product');
+      return;
     }
 
-    return updatedProduct;
+    console.log(`📝 Found ${pendingTasks.length} pending task(s) to complete for ${reviewerRole}`);
+    for (const task of pendingTasks) {
+      try {
+        await this.tasksService.completeTask(task.id, { notes: note }, reviewerId);
+        console.log(`✅ Task ${task.id} completed`);
+      } catch (error) {
+        console.error(`⚠️ Failed to complete task ${task.id}:`, error);
+        // Continue with other tasks even if one fails
+      }
+    }
   }
 
   async deleteTemporaryProduct(id: string): Promise<void> {
