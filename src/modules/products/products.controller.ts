@@ -250,6 +250,29 @@ export class ProductsController {
     @Request() req: any,
   ) {
     const reviewerId = req.user.userId;
+
+    // El admin puede completar por cualquier rol. Desde la vista general (sin
+    // filtro de rol) manda asRole='all' y confirma los dos carriles a la vez;
+    // el servicio es idempotente, así que el carril ya confirmado se respeta.
+    if (req.user?.role === UserRole.ADMIN && body.asRole === 'all') {
+      console.log('🔍 Admin completa producto temporal para todos los roles:', { id, reviewerId });
+      await this.productsService.completeTemporaryProductByReviewer(
+        id,
+        reviewerId,
+        UserRole.SUPERVISOR,
+        body.notes,
+        body.barcode,
+      );
+      const result = await this.productsService.completeTemporaryProductByReviewer(
+        id,
+        reviewerId,
+        UserRole.DIGITADOR,
+        undefined,
+        body.barcode,
+      );
+      return this.stripCostoForRole(result, req.user?.role);
+    }
+
     const reviewerRole = this.effectiveReviewerRole(req.user?.role, body.asRole);
     console.log('🔍 Complete temporary product by reviewer:', {
       id,
