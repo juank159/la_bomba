@@ -145,6 +145,58 @@ export class FirebaseNotificationService implements OnModuleInit {
   }
 
   /**
+   * Push al cajero que inició un cobro Bre-B apenas el banco lo confirma.
+   * El diálogo de cobro abierto lo usa para pasar a "¡Pago confirmado!" al
+   * instante (además del polling cada 3 s como red de seguridad), y la app
+   * lo anuncia por voz. Nunca lanza: si falla, el polling igual confirma.
+   */
+  async sendBrebPaymentConfirmed(
+    userId: string,
+    chargeId: string,
+    amount: number,
+    payerName: string,
+    bankLabel: string,
+  ): Promise<boolean> {
+    try {
+      if (!this.firebaseApp) return false;
+      const user = await this.usersService.findOne(userId);
+      if (!user?.fcmToken) return false;
+      const amountStr = Math.round(amount).toString();
+      await admin.messaging().send({
+        token: user.fcmToken,
+        notification: {
+          title: `💰 Pago recibido${bankLabel ? ' — ' + bankLabel : ''}`,
+          body: `$${amountStr}${payerName ? ' · ' + payerName : ''}`,
+        },
+        data: {
+          type: 'breb_payment_confirmed',
+          charge_id: chargeId,
+          amount: amountStr,
+          payer_name: payerName ?? '',
+          bank: bankLabel ?? '',
+        },
+        android: {
+          priority: 'high',
+          notification: {
+            sound: 'default',
+            channelId: 'default_channel',
+            icon: 'ic_notification',
+            color: '#4CAF50',
+          },
+        },
+        apns: {
+          payload: { aps: { sound: 'default', badge: 1 } },
+          headers: { 'apns-priority': '10' },
+        },
+      });
+      return true;
+    } catch (error) {
+      console.error(`❌ Error enviando push Bre-B a ${userId}: ${error?.message ?? error}`);
+      return false;
+    }
+  }
+
+  /**
    * Send push notification to multiple users
    */
   async sendToMultipleUsers(

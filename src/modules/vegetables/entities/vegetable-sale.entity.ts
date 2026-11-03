@@ -1,5 +1,6 @@
 import {
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
@@ -40,6 +41,30 @@ export class VegetableSale {
   // había ninguno abierto).
   @Column({ name: 'cash_session_id', nullable: true })
   cashSessionId: string;
+
+  // ── Pago Bre-B (solo si se cobró con llave Bre-B, ver BrebService) ──
+  // Quién pagó (nombre del cliente según el banco), por qué banco/llave
+  // entró y con qué referencia — lo que permite cuadrar contra el extracto.
+  @Index()
+  @Column({ name: 'breb_charge_id', type: 'uuid', nullable: true })
+  brebChargeId: string | null;
+
+  @Column({ name: 'breb_payer_name', type: 'varchar', length: 255, nullable: true })
+  brebPayerName: string | null;
+
+  @Column({ name: 'breb_bank_label', type: 'varchar', length: 50, nullable: true })
+  brebBankLabel: string | null;
+
+  @Column({ name: 'breb_llave', type: 'varchar', length: 255, nullable: true })
+  brebLlave: string | null;
+
+  @Column({ name: 'breb_reference', type: 'varchar', length: 255, nullable: true })
+  brebReference: string | null;
+
+  // Lo que realmente llegó al banco. Puede ser hasta $9 menos que el total
+  // (ajuste para que el monto del cobro sea único y se identifique solo).
+  @Column({ name: 'breb_amount_received', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  brebAmountReceived: number | null;
 
   @OneToMany(() => VegetableSaleItem, (item) => item.sale, { cascade: true })
   items: VegetableSaleItem[];

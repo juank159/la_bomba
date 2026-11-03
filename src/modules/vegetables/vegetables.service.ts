@@ -1,3 +1,4 @@
+import { BrebSaleInfo, BREB_PAYMENT_METHOD_CODE } from '../../common/types/breb-sale-info';
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, QueryFailedError } from 'typeorm';
@@ -216,14 +217,18 @@ export class VegetablesService {
   // Ventas
   // ==========================================================================
 
-  async createSale(dto: CreateVegetableSaleDto, username: string): Promise<VegetableSale> {
-    const paymentMethod = await this.paymentMethodsRepository.findOne({
-      where: { id: dto.paymentMethodId },
-    });
-    if (!paymentMethod) {
-      throw new BadRequestException('Método de pago no encontrado');
-    }
+  /**
+   * Calcula las líneas y el total de una venta SIN guardarla (mismas reglas
+   * que createSale). BrebService lo usa al iniciar un cobro para rechazar
+   * de entrada un carrito inválido o un total que no coincide — antes de
+   * que el cliente transfiera, no después.
+   */
+  async previewSaleTotal(dto: CreateVegetableSaleDto): Promise<number> {
+    const { total } = await this.buildSaleLines(dto);
+    return total;
+  }
 
+  private async buildSaleLines(dto: CreateVegetableSaleDto) {
     // Solo las líneas de catálogo traen vegetableItemId - las de venta
     // libre (sin producto asociado) no participan de este lookup.
     const itemIds = dto.items.map((i) => i.vegetableItemId).filter((id): id is string => !!id);
@@ -303,6 +308,34 @@ export class VegetablesService {
       };
     });
 
+    return { itemsData, total, itemsById };
+  }
+
+  /**
+   * Registra una venta. `breb` solo lo pasa BrebService cuando el banco ya
+   * confirmó la transferencia: en ese caso el método de pago es Bre-B y se
+   * guardan los datos del pagador. Sin `breb`, el método Bre-B se rechaza —
+   * una venta Bre-B nunca se marca como pagada sin la confirmación del banco.
+   */
+  async createSale(
+    dto: CreateVegetableSaleDto,
+    username: string,
+    breb?: BrebSaleInfo,
+  ): Promise<VegetableSale> {
+    const paymentMethod = breb
+      ? await this.paymentMethodsRepository.findOne({ where: { code: BREB_PAYMENT_METHOD_CODE } })
+      : await this.paymentMethodsRepository.findOne({ where: { id: dto.paymentMethodId } });
+    if (!paymentMethod) {
+      throw new BadRequestException('Método de pago no encontrado');
+    }
+    if (!breb && paymentMethod.code === BREB_PAYMENT_METHOD_CODE) {
+      throw new BadRequestException(
+        'Los cobros Bre-B se hacen con el botón "Bre-B": la venta se registra sola cuando el banco confirma el pago.',
+      );
+    }
+
+    const { itemsData, total, itemsById } = await this.buildSaleLines(dto);
+
     // No se vende sin caja abierta HOY. Si quedó una caja abierta de un
     // día anterior sin cerrar, tampoco se permite vender hasta cerrarla y
     // abrir una nueva - la caja se abre y se cierra todos los días.
@@ -317,11 +350,25 @@ export class VegetablesService {
       throw new BadRequestException('No hay una caja abierta. Debes abrir la caja antes de vender.');
     }
 
+    if (breb && Math.abs(total - breb.expectedTotal) > 0.5) {
+      throw new BadRequestException(
+        `El total de la venta (${total}) ya no coincide con lo cobrado por Bre-B (${breb.expectedTotal})`,
+      );
+    }
+
     const sale = this.salesRepository.create({
       total,
       soldBy: username,
       paymentMethodId: paymentMethod.id,
       cashSessionId: openSession.id,
+      ...(breb && {
+        brebChargeId: breb.chargeId,
+        brebPayerName: breb.payerName,
+        brebBankLabel: breb.bankLabel,
+        brebLlave: breb.llave,
+        brebReference: breb.reference,
+        brebAmountReceived: breb.amountReceived,
+      }),
     });
     const savedSale = await this.salesRepository.save(sale);
 

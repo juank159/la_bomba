@@ -1,3 +1,4 @@
+import { BrebSaleInfo, BREB_PAYMENT_METHOD_CODE } from '../../common/types/breb-sale-info';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -20,14 +21,13 @@ export class InvoicesService {
     private paymentMethodsRepository: Repository<PaymentMethod>,
   ) {}
 
-  async create(dto: CreateInvoiceDto, username: string): Promise<Invoice> {
-    const paymentMethod = await this.paymentMethodsRepository.findOne({
-      where: { id: dto.paymentMethodId },
-    });
-    if (!paymentMethod) {
-      throw new BadRequestException('Método de pago no encontrado');
-    }
+  /** Total de una factura SIN guardarla (mismas reglas que create). */
+  async previewInvoiceTotal(dto: CreateInvoiceDto): Promise<number> {
+    const { subtotal, tax } = await this.buildInvoiceLines(dto);
+    return subtotal + tax;
+  }
 
+  private async buildInvoiceLines(dto: CreateInvoiceDto) {
     // Cargar todos los productos de una vez y validar que existan
     const productIds = dto.items.map(item => item.productId);
     const products = await this.productsRepository.find({
@@ -73,9 +73,45 @@ export class InvoicesService {
       };
     });
 
+    return { itemsData, subtotal, tax };
+  }
+
+  /**
+   * Crea una factura. `breb` solo lo pasa BrebService cuando el banco ya
+   * confirmó la transferencia (ver VegetablesService.createSale, misma regla).
+   */
+  async create(dto: CreateInvoiceDto, username: string, breb?: BrebSaleInfo): Promise<Invoice> {
+    const paymentMethod = breb
+      ? await this.paymentMethodsRepository.findOne({ where: { code: BREB_PAYMENT_METHOD_CODE } })
+      : await this.paymentMethodsRepository.findOne({ where: { id: dto.paymentMethodId } });
+    if (!paymentMethod) {
+      throw new BadRequestException('Método de pago no encontrado');
+    }
+    if (!breb && paymentMethod.code === BREB_PAYMENT_METHOD_CODE) {
+      throw new BadRequestException(
+        'Los cobros Bre-B se hacen con el botón "Bre-B": la factura se registra sola cuando el banco confirma el pago.',
+      );
+    }
+
+    const { itemsData, subtotal, tax } = await this.buildInvoiceLines(dto);
+
+    if (breb && Math.abs(subtotal + tax - breb.expectedTotal) > 0.5) {
+      throw new BadRequestException(
+        `El total de la factura (${subtotal + tax}) ya no coincide con lo cobrado por Bre-B (${breb.expectedTotal})`,
+      );
+    }
+
     const invoice = this.invoicesRepository.create({
       clientId: dto.clientId || null,
-      paymentMethodId: dto.paymentMethodId,
+      paymentMethodId: paymentMethod.id,
+      ...(breb && {
+        brebChargeId: breb.chargeId,
+        brebPayerName: breb.payerName,
+        brebBankLabel: breb.bankLabel,
+        brebLlave: breb.llave,
+        brebReference: breb.reference,
+        brebAmountReceived: breb.amountReceived,
+      }),
       subtotal,
       tax,
       total: subtotal + tax, // = suma de unitPrice*quantity (el IVA ya estaba incluido ahí)

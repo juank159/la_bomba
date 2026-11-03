@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { BrebConfig } from '../breb/entities/breb-config.entity';
 import { VegetableCashSession, CashSessionStatus } from './entities/vegetable-cash-session.entity';
 import { VegetableSale } from '../vegetables/entities/vegetable-sale.entity';
 import { VegetablePurchase, PurchaseFundingSource } from '../vegetables/entities/vegetable-purchase.entity';
@@ -33,6 +35,8 @@ export class VegetableCashSessionsService {
     private purchasesRepository: Repository<VegetablePurchase>,
     @InjectRepository(VegetableExpense)
     private expensesRepository: Repository<VegetableExpense>,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
   async open(dto: OpenCashSessionDto, username: string): Promise<VegetableCashSession> {
@@ -271,5 +275,133 @@ export class VegetableCashSessionsService {
       total: Number(row.total),
       count: Number(row.count),
     }));
+  }
+
+  // ==========================================================================
+  // Cierre a ciegas + reporte completo (estilo Food App)
+  // ==========================================================================
+
+  /**
+   * Versión "a ciegas" de un turno para el verdulero: sin lo esperado ni la
+   * diferencia. El cajero solo cuenta y escribe lo que hay; el cuadre lo ve
+   * quien tenga la contraseña de Adalberto (ver getReport). Así no pierde
+   * tiempo contando la plata a cada rato, y el cuadre no se "acomoda".
+   */
+  static redact<T extends Partial<VegetableCashSession>>(session: T): T {
+    if (!session) return session;
+    return { ...session, expectedAmount: null, difference: null, blind: true } as T;
+  }
+
+  /**
+   * Reporte completo de un turno (X de caja si sigue abierto, Z si cerró):
+   * efectivo esperado, cierre, desglose por método, Bre-B por llave con cada
+   * transacción (hora, cliente que pagó, banco, referencia) y el detalle de
+   * gastos y compras pagados desde la caja.
+   */
+  async getReport(sessionId: string) {
+    const session = await this.findOne(sessionId);
+    const totals = await this.computeSessionTotals(sessionId);
+    const expectedLive = Number(session.openingAmount) + totals.cashSales - totals.cashExpenses - totals.cashPurchases;
+    const isClosed = session.status === CashSessionStatus.CLOSED;
+
+    const sales = await this.salesRepository.find({
+      where: { cashSessionId: sessionId, isActive: true },
+      relations: ['paymentMethod'],
+      order: { createdAt: 'ASC' },
+    });
+
+    // Nombres amigables de las llaves ("Nequi negocio") configuradas por el
+    // admin, para no mostrar el handle crudo cuando se puede.
+    let llaveLabels: Array<{ llave: string; label: string }> = [];
+    try {
+      const cfg = await this.dataSource.getRepository(BrebConfig).findOne({ where: { id: 1 } });
+      llaveLabels = (cfg?.llaves ?? []).map((l) => ({ llave: l.llave, label: l.label }));
+    } catch {
+      llaveLabels = [];
+    }
+    const normalize = (v: string) => v.trim().toLowerCase().replace(/^@/, '');
+    const labelForLlave = (llave: string) =>
+      llaveLabels.find((l) => normalize(l.llave) === normalize(llave))?.label;
+
+    const byMethod = new Map<string, { paymentMethodId: string; name: string; isCash: boolean; code: string | null; count: number; total: number }>();
+    const brebByLlave = new Map<string, { key: string; label: string; count: number; total: number; received: number }>();
+
+    const salesList = sales.map((sale) => {
+      const pm = sale.paymentMethod;
+      const total = Number(sale.total);
+      const m = byMethod.get(pm.id) ?? { paymentMethodId: pm.id, name: pm.name, isCash: pm.isCash, code: pm.code ?? null, count: 0, total: 0 };
+      m.count += 1;
+      m.total = Math.round((m.total + total) * 100) / 100;
+      byMethod.set(pm.id, m);
+
+      let brebGroupKey: string | null = null;
+      if (pm.code === 'breb') {
+        // Por llave si el banco la reportó (Bancolombia), si no por banco
+        // (Nequi nunca la manda) — nunca mezclar bancos distintos.
+        const llave = sale.brebLlave?.trim() || null;
+        const bank = sale.brebBankLabel?.trim() || null;
+        brebGroupKey = llave ? `llave:${normalize(llave)}` : bank ? `banco:${bank}` : 'sin_identificar';
+        const label = llave
+          ? labelForLlave(llave)
+            ? `${labelForLlave(llave)} (${llave})`
+            : llave
+          : bank ?? 'Sin identificar';
+        const g = brebByLlave.get(brebGroupKey) ?? { key: brebGroupKey, label, count: 0, total: 0, received: 0 };
+        g.count += 1;
+        g.total = Math.round((g.total + total) * 100) / 100;
+        g.received = Math.round((g.received + Number(sale.brebAmountReceived ?? total)) * 100) / 100;
+        brebByLlave.set(brebGroupKey, g);
+      }
+
+      return {
+        id: sale.id,
+        number: sale.number,
+        total,
+        createdAt: sale.createdAt,
+        soldBy: sale.soldBy,
+        paymentMethodId: pm.id,
+        paymentMethodName: pm.name,
+        isCash: pm.isCash,
+        isBreb: pm.code === 'breb',
+        brebPayerName: sale.brebPayerName ?? null,
+        brebBankLabel: sale.brebBankLabel ?? null,
+        brebLlave: sale.brebLlave ?? null,
+        brebLlaveLabel: sale.brebLlave ? labelForLlave(sale.brebLlave) ?? null : null,
+        brebReference: sale.brebReference ?? null,
+        brebAmountReceived: sale.brebAmountReceived != null ? Number(sale.brebAmountReceived) : null,
+        brebGroupKey,
+      };
+    });
+
+    const expenses = await this.expensesRepository.find({
+      where: { cashSessionId: sessionId, fundingSource: ExpenseFundingSource.CAJA },
+      order: { createdAt: 'ASC' },
+    });
+    const purchases = await this.purchasesRepository.find({
+      where: { cashSessionId: sessionId, fundingSource: PurchaseFundingSource.CAJA, isActive: true },
+      order: { createdAt: 'ASC' },
+    });
+
+    const sortDesc = <T extends { total: number }>(arr: T[]) => arr.sort((a, b) => b.total - a.total);
+    const totalSales = salesList.reduce((acc, s) => acc + s.total, 0);
+
+    return {
+      session,
+      isClosed,
+      openingAmount: Number(session.openingAmount),
+      cashSales: totals.cashSales,
+      cashExpenses: totals.cashExpenses,
+      cashPurchases: totals.cashPurchases,
+      expectedAmount: isClosed ? Number(session.expectedAmount) : expectedLive,
+      closingAmount: isClosed ? Number(session.closingAmount) : null,
+      difference: isClosed ? Number(session.difference) : null,
+      totalSales: Math.round(totalSales * 100) / 100,
+      salesCount: salesList.length,
+      byMethod: sortDesc([...byMethod.values()]),
+      brebByLlave: sortDesc([...brebByLlave.values()]),
+      sales: salesList,
+      expenses: expenses.map((e) => ({ id: e.id, description: e.description, amount: Number(e.amount), createdAt: e.createdAt, createdBy: e.createdBy })),
+      purchases: purchases.map((p) => ({ id: p.id, number: p.number, total: Number(p.total), createdAt: p.createdAt, createdBy: p.createdBy })),
+    };
   }
 }

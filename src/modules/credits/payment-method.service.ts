@@ -77,6 +77,7 @@ export class PaymentMethodService {
     username: string,
   ): Promise<PaymentMethod> {
     const paymentMethod = await this.findOne(id);
+    this.assertNotSystemMethod(paymentMethod);
 
     // Si se está actualizando el nombre, verificar que no exista otro con ese nombre
     if (
@@ -105,6 +106,7 @@ export class PaymentMethodService {
    */
   async remove(id: string, username: string): Promise<void> {
     const paymentMethod = await this.findOne(id);
+    this.assertNotSystemMethod(paymentMethod);
 
     // No eliminar físicamente, solo desactivar
     paymentMethod.isActive = false;
@@ -123,5 +125,15 @@ export class PaymentMethodService {
     paymentMethod.updatedBy = username;
 
     return this.paymentMethodRepository.save(paymentMethod);
+  }
+
+  /// El método "Bre-B" lo maneja el sistema (se confirma solo con el banco):
+  /// no se puede renombrar, convertir en efectivo ni desactivar a mano.
+  private assertNotSystemMethod(paymentMethod: PaymentMethod): void {
+    if (paymentMethod.code) {
+      throw new BadRequestException(
+        `"${paymentMethod.name}" es un método del sistema y no se puede modificar. Las llaves Bre-B se configuran en Administración → Pagos Bre-B.`,
+      );
+    }
   }
 }

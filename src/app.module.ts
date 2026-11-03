@@ -19,6 +19,7 @@ import { VegetableExpensesModule } from './modules/vegetable-expenses/vegetable-
 import { VegetableCashSessionsModule } from './modules/vegetable-cash-sessions/vegetable-cash-sessions.module';
 import { CorresponsalModule } from './modules/corresponsal/corresponsal.module';
 import { HealthModule } from './health/health.module';
+import { BrebModule } from './modules/breb/breb.module';
 import { createDatabaseConfig } from './config/database.config';
 import configuration, { validateConfig } from './config/configuration';
 
@@ -54,6 +55,7 @@ import configuration, { validateConfig } from './config/configuration';
     VegetablesModule,
     VegetableExpensesModule,
     VegetableCashSessionsModule,
+    BrebModule,
     CorresponsalModule,
   ],
 })

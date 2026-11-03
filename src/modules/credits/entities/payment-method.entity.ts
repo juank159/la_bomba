@@ -32,6 +32,13 @@ export class PaymentMethod {
   @Column({ name: 'is_cash', type: 'boolean', default: false })
   isCash: boolean;
 
+  // Código interno para métodos "especiales" que el sistema maneja solo.
+  // Hoy solo existe 'breb': el método Bre-B se crea automáticamente y una
+  // venta con él SOLO se registra cuando el banco confirma el pago (ver
+  // BrebService) — no se puede elegir a mano en un cobro normal.
+  @Column({ type: 'varchar', length: 30, nullable: true, unique: true })
+  code: string | null;
+
   @Column({ name: 'created_by', type: 'varchar', length: 100 })
   createdBy: string;
 

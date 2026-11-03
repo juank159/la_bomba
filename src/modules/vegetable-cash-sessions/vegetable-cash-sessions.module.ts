@@ -6,9 +6,14 @@ import { VegetableCashSession } from './entities/vegetable-cash-session.entity';
 import { VegetableSale } from '../vegetables/entities/vegetable-sale.entity';
 import { VegetablePurchase } from '../vegetables/entities/vegetable-purchase.entity';
 import { VegetableExpense } from '../vegetable-expenses/entities/vegetable-expense.entity';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([VegetableCashSession, VegetableSale, VegetablePurchase, VegetableExpense])],
+  imports: [
+    TypeOrmModule.forFeature([VegetableCashSession, VegetableSale, VegetablePurchase, VegetableExpense]),
+    // Para validar la contraseña de Adalberto antes de mostrar el cuadre.
+    AuthModule,
+  ],
   controllers: [VegetableCashSessionsController],
   providers: [VegetableCashSessionsService],
   exports: [VegetableCashSessionsService],
