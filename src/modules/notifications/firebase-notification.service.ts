@@ -145,55 +145,104 @@ export class FirebaseNotificationService implements OnModuleInit {
   }
 
   /**
-   * Push al cajero que inició un cobro Bre-B apenas el banco lo confirma.
-   * El diálogo de cobro abierto lo usa para pasar a "¡Pago confirmado!" al
-   * instante (además del polling cada 3 s como red de seguridad), y la app
-   * lo anuncia por voz. Nunca lanza: si falla, el polling igual confirma.
+   * Push "pago Bre-B recibido" apenas el banco lo confirma. Le llega SOLO a:
+   *  - el cajero que hizo el cobro (verdulero o admin): su diálogo de cobro
+   *    pasa a "¡Pago confirmado!" al instante y la app lo anuncia por voz;
+   *  - todos los administradores activos, para que vean cada pago que entra.
+   * Ningún otro rol (supervisor, digitador, empleado) recibe estos avisos,
+   * aunque por algún error quedaran como "cajero" del cobro.
+   * Nunca lanza: si falla, el polling del diálogo igual confirma.
    */
   async sendBrebPaymentConfirmed(
-    userId: string,
+    initiatorUserId: string,
     chargeId: string,
     amount: number,
     payerName: string,
     bankLabel: string,
-  ): Promise<boolean> {
+    context: { module?: string; cashier?: string; saleNumber?: number | null } = {},
+  ): Promise<number> {
+    if (!this.firebaseApp) return 0;
+    const allowed = new Set(['admin', 'verdulero']);
+    let recipients: Array<{ id: string; role: string; fcmToken: string }> = [];
     try {
-      if (!this.firebaseApp) return false;
-      const user = await this.usersService.findOne(userId);
-      if (!user?.fcmToken) return false;
-      const amountStr = Math.round(amount).toString();
-      await admin.messaging().send({
-        token: user.fcmToken,
-        notification: {
-          title: `💰 Pago recibido${bankLabel ? ' — ' + bankLabel : ''}`,
-          body: `$${amountStr}${payerName ? ' · ' + payerName : ''}`,
-        },
-        data: {
-          type: 'breb_payment_confirmed',
-          charge_id: chargeId,
-          amount: amountStr,
-          payer_name: payerName ?? '',
-          bank: bankLabel ?? '',
-        },
-        android: {
-          priority: 'high',
-          notification: {
-            sound: 'default',
-            channelId: 'default_channel',
-            icon: 'ic_notification',
-            color: '#4CAF50',
-          },
-        },
-        apns: {
-          payload: { aps: { sound: 'default', badge: 1 } },
-          headers: { 'apns-priority': '10' },
-        },
-      });
-      return true;
+      const initiator = await this.usersService.findOne(initiatorUserId);
+      const admins = await this.usersService.findUsersByRole('admin');
+      recipients = [initiator, ...admins].filter(
+        (u): u is any => !!u && !!u.fcmToken && u.isActive !== false && allowed.has(String(u.role)),
+      );
     } catch (error) {
-      console.error(`❌ Error enviando push Bre-B a ${userId}: ${error?.message ?? error}`);
-      return false;
+      console.error(`❌ Error buscando destinatarios del push Bre-B: ${error?.message ?? error}`);
+      return 0;
     }
+
+    // Sin duplicados (el admin que cobró es a la vez cajero y admin; y un
+    // mismo celular no debe sonar dos veces).
+    const seenUsers = new Set<string>();
+    const seenTokens = new Set<string>();
+    recipients = recipients.filter((u) => {
+      if (seenUsers.has(u.id) || seenTokens.has(u.fcmToken)) return false;
+      seenUsers.add(u.id);
+      seenTokens.add(u.fcmToken);
+      return true;
+    });
+
+    const amountStr = Math.round(amount).toString();
+    const amountFmt = '$' + Math.round(amount).toLocaleString('es-CO');
+    const where = context.module === 'invoices' ? 'Facturación' : 'Verduras';
+    const what = context.module === 'invoices' ? 'Factura' : 'Venta';
+    const saleTxt = context.saleNumber ? ` · ${what} #${String(context.saleNumber).padStart(6, '0')}` : '';
+
+    let sent = 0;
+    for (const u of recipients) {
+      const isInitiator = u.id === initiatorUserId;
+      // Al cajero: lo justo para confirmar. Al admin: además de qué caja y
+      // quién cobró, para que sepa de dónde viene la plata.
+      const body = isInitiator
+        ? `${amountFmt}${payerName ? ' · ' + payerName : ''}`
+        : `${amountFmt}${payerName ? ' de ' + payerName : ''} · ${where}` +
+          `${context.cashier ? ', cobró ' + context.cashier : ''}${saleTxt}`;
+      try {
+        await admin.messaging().send({
+          token: u.fcmToken,
+          notification: {
+            title: `💰 Pago Bre-B recibido${bankLabel ? ' — ' + bankLabel : ''}`,
+            body,
+          },
+          data: {
+            type: 'breb_payment_confirmed',
+            charge_id: chargeId,
+            amount: amountStr,
+            payer_name: payerName ?? '',
+            bank: bankLabel ?? '',
+            module: context.module ?? '',
+            cashier: context.cashier ?? '',
+            sale_number: context.saleNumber ? String(context.saleNumber) : '',
+            for_initiator: isInitiator ? 'true' : 'false',
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              sound: 'default',
+              channelId: 'default_channel',
+              icon: 'ic_notification',
+              color: '#4CAF50',
+            },
+          },
+          apns: {
+            payload: { aps: { sound: 'default', badge: 1 } },
+            headers: { 'apns-priority': '10' },
+          },
+        });
+        sent++;
+      } catch (error) {
+        console.error(`❌ Error enviando push Bre-B a ${u.id}: ${error?.message ?? error}`);
+        if (error?.code === 'messaging/invalid-registration-token' ||
+            error?.code === 'messaging/registration-token-not-registered') {
+          await this.usersService.clearFcmToken(u.id).catch(() => undefined);
+        }
+      }
+    }
+    return sent;
   }
 
   /**

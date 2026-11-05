@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 
 @Injectable()
@@ -28,6 +28,13 @@ export class UsersService {
   }
 
   async updateFcmToken(userId: string, fcmToken: string): Promise<User> {
+    // Un celular = un usuario: si este token estaba guardado en otro usuario
+    // (celular compartido, sesión que venció sin cerrar), se le quita. Si no,
+    // el que entró ahora recibiría las notificaciones del anterior (ej. un
+    // supervisor viendo los pagos Bre-B del administrador).
+    if (fcmToken) {
+      await this.usersRepository.update({ fcmToken, id: Not(userId) }, { fcmToken: null });
+    }
     await this.usersRepository.update(userId, { fcmToken });
     return this.findOne(userId);
   }

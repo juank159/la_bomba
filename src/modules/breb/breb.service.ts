@@ -850,6 +850,7 @@ export class BrebService implements OnModuleInit {
         Number(charge.receivedAmount ?? charge.amount),
         charge.payerName ?? '',
         charge.bankLabel ?? '',
+        { module: charge.module, cashier: charge.initiatedByUsername, saleNumber: charge.saleNumber },
       )
       .catch((err) => this.logger.error(`Error enviando push Bre-B: ${(err as Error).message}`));
   }
@@ -888,6 +889,8 @@ export class BrebService implements OnModuleInit {
         if (res.affected) {
           fixed++;
           this.logger.warn(`Cobro Bre-B ${c.id} estaba trabado en "matching" → ${next}`);
+          // El aviso no alcanzó a salir antes de la caída: se manda ahora.
+          if (sale) this.notifyConfirmed({ ...c, saleId: sale.id, saleNumber: sale.number } as BrebPendingCharge);
         }
       }
     } catch (err) {
