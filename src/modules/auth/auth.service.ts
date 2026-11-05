@@ -100,7 +100,10 @@ export class AuthService {
   }
 
   private signRefreshToken(userId: string): string {
-    return this.jwtService.sign({ sub: userId, type: 'refresh' }, { expiresIn: '30d' });
+    // Sesión deslizante: cada renovación entrega un token nuevo, así que la
+    // sesión solo se cierra si la app no se usa durante este tiempo.
+    const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
+    return this.jwtService.sign({ sub: userId, type: 'refresh' }, { expiresIn: expiresIn as any });
   }
 
   async register(registerDto: RegisterDto) {

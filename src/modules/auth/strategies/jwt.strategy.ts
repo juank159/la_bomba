@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -14,6 +14,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    // El token de renovación (30 días) solo sirve en POST /auth/refresh,
+    // nunca como token de acceso.
+    if (payload?.type === 'refresh') {
+      throw new UnauthorizedException('Token inválido');
+    }
     return { userId: payload.sub, username: payload.username, role: payload.role };
   }
 }
