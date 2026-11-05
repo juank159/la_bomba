@@ -148,7 +148,10 @@ export class BrebController {
   @UseInterceptors(AnyFilesInterceptor())
   @SkipThrottle()
   @HttpCode(HttpStatus.OK)
-  inboundEmail(@Body() body: Record<string, string>) {
+  inboundEmail(@Body() rawBody: Record<string, string> | undefined) {
+    // Petición sin cuerpo (no es de Mailgun): se rechaza por firma ausente
+    // (401) en vez de romper con un 500.
+    const body = rawBody ?? {};
     return this.brebService.handleInboundEmail({
       timestamp: body.timestamp,
       token: body.token,
