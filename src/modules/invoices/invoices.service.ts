@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Invoice, InvoiceStatus } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
+import { InvoicePayment } from './entities/invoice-payment.entity';
+import { buildPaymentParts } from '../../common/utils/payment-parts.util';
 import { Product } from '../products/entities/product.entity';
 import { PaymentMethod } from '../credits/entities/payment-method.entity';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
@@ -15,6 +17,8 @@ export class InvoicesService {
     private invoicesRepository: Repository<Invoice>,
     @InjectRepository(InvoiceItem)
     private invoiceItemsRepository: Repository<InvoiceItem>,
+    @InjectRepository(InvoicePayment)
+    private invoicePaymentsRepository: Repository<InvoicePayment>,
     @InjectRepository(Product)
     private productsRepository: Repository<Product>,
     @InjectRepository(PaymentMethod)
@@ -121,6 +125,11 @@ export class InvoicesService {
 
     const savedInvoice = await this.invoicesRepository.save(invoice);
 
+    const parts = await buildPaymentParts(this.paymentMethodsRepository, subtotal + tax, paymentMethod, breb);
+    await this.invoicePaymentsRepository.save(
+      parts.map(p => this.invoicePaymentsRepository.create({ invoiceId: savedInvoice.id, ...p })),
+    );
+
     const invoiceItems = itemsData.map(item =>
       this.invoiceItemsRepository.create({
         invoiceId: savedInvoice.id,
@@ -158,7 +167,7 @@ export class InvoicesService {
 
   async findAll(): Promise<Invoice[]> {
     return this.invoicesRepository.find({
-      relations: ['items', 'client', 'paymentMethod'],
+      relations: ['items', 'client', 'paymentMethod', 'payments', 'payments.paymentMethod'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -166,7 +175,7 @@ export class InvoicesService {
   async findOne(id: string): Promise<Invoice> {
     const invoice = await this.invoicesRepository.findOne({
       where: { id },
-      relations: ['items', 'client', 'paymentMethod'],
+      relations: ['items', 'client', 'paymentMethod', 'payments', 'payments.paymentMethod'],
     });
 
     if (!invoice) {

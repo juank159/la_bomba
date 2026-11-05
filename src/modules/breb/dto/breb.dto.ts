@@ -30,9 +30,18 @@ export class CreateBrebChargeDto {
   @IsObject()
   draft: Record<string, any>;
 
+  /** Lo que paga por Bre-B: el total, o solo una parte en un pago mixto. */
   @IsNumber()
   @IsPositive()
   amount: number;
+
+  /**
+   * Pago mixto: con qué paga el resto (efectivo u otra cuenta). Si se
+   * manda, `amount` puede ser menor que el total de la venta.
+   */
+  @IsOptional()
+  @IsUUID()
+  restPaymentMethodId?: string;
 }
 
 export class PreviewBrebQrDto {
@@ -51,6 +60,11 @@ export class AssignBrebPaymentDto {
 
   @IsUUID()
   emailId: string;
+
+  /** Si el pago llegó MENOR que el cobro: con qué paga el resto. */
+  @IsOptional()
+  @IsUUID()
+  restPaymentMethodId?: string;
 }
 
 export class BrebLlaveDto {

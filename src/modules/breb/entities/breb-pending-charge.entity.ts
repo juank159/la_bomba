@@ -56,9 +56,24 @@ export class BrebPendingCharge {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   amount: number;
 
-  /** Total de la venta antes del ajuste por monto único. */
+  /**
+   * Lo que se le pide al cliente por Bre-B, antes del ajuste por monto
+   * único. Es el total de la venta, o solo una parte si paga mixto.
+   */
   @Column({ name: 'requested_amount', type: 'decimal', precision: 12, scale: 2 })
   requestedAmount: number;
+
+  /**
+   * Total de la venta/factura. Solo difiere de `requestedAmount` en un pago
+   * mixto (ej. $50.000 de cuenta, $20.000 por Bre-B). `null` en cobros
+   * viejos: entonces el total es `requestedAmount`.
+   */
+  @Column({ name: 'sale_total', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  saleTotal: number | null;
+
+  /** Pago mixto: con qué se paga el resto (efectivo u otra cuenta). */
+  @Column({ name: 'rest_payment_method_id', type: 'uuid', nullable: true })
+  restPaymentMethodId: string | null;
 
   @Column({ type: 'varchar', length: 20, default: 'pending' })
   @Index()

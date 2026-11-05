@@ -12,6 +12,7 @@ import {
 import { Client } from '../../clients/entities/client.entity';
 import { PaymentMethod } from '../../credits/entities/payment-method.entity';
 import { InvoiceItem } from './invoice-item.entity';
+import { InvoicePayment } from './invoice-payment.entity';
 
 export enum InvoiceStatus {
   COMPLETED = 'completed',
@@ -92,6 +93,11 @@ export class Invoice {
 
   @OneToMany(() => InvoiceItem, item => item.invoice, { cascade: true })
   items: InvoiceItem[];
+
+  // Partes del pago (ej. Bre-B $20.000 + Efectivo $30.000). Suman `total`.
+  // `paymentMethodId` queda como el método principal (Bre-B si hubo Bre-B).
+  @OneToMany(() => InvoicePayment, p => p.invoice)
+  payments: InvoicePayment[];
 
   @CreateDateColumn()
   createdAt: Date;

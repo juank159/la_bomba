@@ -48,7 +48,7 @@ export class BrebController {
   @Roles(UserRole.ADMIN, UserRole.VERDULERO)
   @HttpCode(HttpStatus.OK)
   createCharge(@Body() dto: CreateBrebChargeDto, @Request() req) {
-    return this.brebService.createCharge(dto.module, dto.draft, dto.amount, actorOf(req));
+    return this.brebService.createCharge(dto.module, dto.draft, dto.amount, actorOf(req), dto.restPaymentMethodId);
   }
 
   @Get('status/:chargeId')
@@ -79,7 +79,7 @@ export class BrebController {
   @Roles(UserRole.ADMIN, UserRole.VERDULERO)
   @HttpCode(HttpStatus.OK)
   assign(@Body() dto: AssignBrebPaymentDto, @Request() req) {
-    return this.brebService.assignManually(dto.chargeId, dto.emailId, actorOf(req));
+    return this.brebService.assignManually(dto.chargeId, dto.emailId, actorOf(req), dto.restPaymentMethodId);
   }
 
   // ───────────── Configuración e historial (solo admin) ─────────────

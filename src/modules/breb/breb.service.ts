@@ -16,6 +16,7 @@ import * as crypto from 'crypto';
 import { DataSource, MoreThan } from 'typeorm';
 import { BREB_PAYMENT_METHOD_CODE, BrebSaleInfo } from '../../common/types/breb-sale-info';
 import { PaymentMethod } from '../credits/entities/payment-method.entity';
+import { findRestPaymentMethod } from '../../common/utils/payment-parts.util';
 import { CreateInvoiceDto } from '../invoices/dto/create-invoice.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -39,6 +40,9 @@ import { buildDynamicQrPayload, InvalidEmvQrTemplateError } from './utils/emv-qr
 
 /** Máximo de pesos que se baja un cobro para que su monto sea único. */
 export const MAX_BREB_ADJUSTMENT = 9;
+
+/** Mínimo que se puede cobrar por Bre-B en un pago mixto. */
+export const MIN_BREB_PARTIAL = 100;
 
 const CONFIG_ID = 1;
 
@@ -218,10 +222,14 @@ export class BrebService implements OnModuleInit {
     draft: Record<string, any>,
     amount: number,
     actor: BrebActor,
+    restPaymentMethodId?: string | null,
   ): Promise<{
     chargeId: string;
     amount: number;
     requestedAmount: number;
+    saleTotal: number;
+    restAmount: number;
+    restPaymentMethod: { id: string; name: string } | null;
     llaves: Array<{ id: string; label: string; llave: string; qrPayload: string | null }>;
     expiresAt: Date;
   }> {
@@ -248,7 +256,21 @@ export class BrebService implements OnModuleInit {
       module === 'vegetables'
         ? await this.vegetablesService.previewSaleTotal(cleanDraft as CreateVegetableSaleDto)
         : await this.invoicesService.previewInvoiceTotal(cleanDraft as CreateInvoiceDto);
-    if (Math.abs(computed - Number(amount)) > 0.5) {
+    const saleTotal = Math.round(computed * 100) / 100;
+
+    // Pago mixto: el cliente paga solo una parte por Bre-B y el resto en
+    // efectivo u otra cuenta. Si la "parte" es el total, es un cobro normal.
+    let restPm: PaymentMethod | null = null;
+    if (restPaymentMethodId && Number(amount) < saleTotal - 0.5) {
+      restPm = await findRestPaymentMethod(this.dataSource.getRepository(PaymentMethod), restPaymentMethodId);
+      if (Number(amount) < MIN_BREB_PARTIAL) {
+        throw new BadRequestException(`Lo mínimo por Bre-B es $${MIN_BREB_PARTIAL}.`);
+      }
+    } else if (restPaymentMethodId && Number(amount) > saleTotal + 0.5) {
+      throw new BadRequestException(
+        `Lo que paga por Bre-B (${Math.round(Number(amount))}) es más que el total (${Math.round(saleTotal)}).`,
+      );
+    } else if (Math.abs(computed - Number(amount)) > 0.5) {
       throw new BadRequestException(
         `El total del carrito (${Math.round(computed)}) no coincide con el valor a cobrar (${Math.round(Number(amount))}). Actualiza la pantalla e intenta de nuevo.`,
       );
@@ -295,6 +317,8 @@ export class BrebService implements OnModuleInit {
           initiatedByUsername: actor.username,
           amount: chosen,
           requestedAmount: requested,
+          saleTotal,
+          restPaymentMethodId: restPm?.id ?? null,
           status: 'pending',
           expiresAt,
         }),
@@ -305,6 +329,7 @@ export class BrebService implements OnModuleInit {
     this.logger.log(
       `Cobro Bre-B creado: id=${record.id} módulo=${module} monto=${chargeAmount}` +
         (chargeAmount !== requested ? ` (pedido ${requested})` : '') +
+        (restPm ? ` mixto: total ${saleTotal}, resto en ${restPm.name}` : '') +
         ` por ${actor.username}`,
     );
 
@@ -312,6 +337,9 @@ export class BrebService implements OnModuleInit {
       chargeId: record.id,
       amount: chargeAmount,
       requestedAmount: requested,
+      saleTotal,
+      restAmount: restPm ? Math.round((saleTotal - requested) * 100) / 100 : 0,
+      restPaymentMethod: restPm ? { id: restPm.id, name: restPm.name } : null,
       llaves: llaves.map((l) => ({
         id: l.id,
         label: l.label,
@@ -375,6 +403,9 @@ export class BrebService implements OnModuleInit {
     saleNumber: number | null;
     module: BrebChargeModule;
     expiresAt: Date;
+    requestedAmount: number;
+    saleTotal: number;
+    restAmount: number;
   }> {
     const repo = this.dataSource.getRepository(BrebPendingCharge);
     const record = await this.findChargeFor(chargeId, actor);
@@ -392,6 +423,11 @@ export class BrebService implements OnModuleInit {
       saleNumber: record.saleNumber,
       module: record.module,
       expiresAt: record.expiresAt,
+      requestedAmount: Number(record.requestedAmount),
+      saleTotal: Number(record.saleTotal ?? record.requestedAmount),
+      restAmount: record.restPaymentMethodId
+        ? Math.round((Number(record.saleTotal ?? record.requestedAmount) - Number(record.requestedAmount)) * 100) / 100
+        : 0,
     };
   }
 
@@ -454,8 +490,17 @@ export class BrebService implements OnModuleInit {
     chargeId: string,
     emailId: string,
     actor: BrebActor,
+    restPaymentMethodId?: string | null,
   ): Promise<{ success: boolean; saleId: string | null; saleNumber: number | null }> {
     await this.findChargeFor(chargeId, actor); // permisos + 404
+
+    // Pago menor que el cobro + "el resto en efectivo/otra cuenta": la
+    // venta queda mixta (lo que llegó por Bre-B + el resto con ese método).
+    const restPm = restPaymentMethodId
+      ? await findRestPaymentMethod(this.dataSource.getRepository(PaymentMethod), restPaymentMethodId)
+      : null;
+    // Para deshacer si falla el registro de la venta.
+    let original: Pick<BrebPendingCharge, 'requestedAmount' | 'saleTotal' | 'restPaymentMethodId'> | null = null;
 
     const charge = await this.dataSource.transaction(async (tx) => {
       const email = await tx
@@ -485,11 +530,25 @@ export class BrebService implements OnModuleInit {
       }
       const received = Number(email.rawAmount);
       const requested = Number(c.requestedAmount);
+      original = {
+        requestedAmount: c.requestedAmount,
+        saleTotal: c.saleTotal,
+        restPaymentMethodId: c.restPaymentMethodId,
+      };
       if (requested - received > MAX_BREB_ADJUSTMENT + 0.009) {
-        throw new BadRequestException(
-          `Ese pago ($${received}) es menor que el cobro ($${requested}). ` +
-            'Cobra la diferencia aparte o asigna el pago correcto.',
-        );
+        if (!restPm) {
+          throw new BadRequestException(
+            `Ese pago ($${received}) es menor que el cobro ($${requested}). ` +
+              'Elige con qué paga el resto (pago mixto) o asigna el pago correcto.',
+          );
+        }
+        if (received < MIN_BREB_PARTIAL) {
+          throw new BadRequestException(`Lo mínimo por Bre-B es $${MIN_BREB_PARTIAL}.`);
+        }
+        // Ahora Bre-B es solo lo que llegó; el resto lo paga con `restPm`.
+        c.saleTotal = c.saleTotal ?? c.requestedAmount;
+        c.requestedAmount = received;
+        c.restPaymentMethodId = restPm.id;
       }
       c.status = 'matching';
       c.payerName = email.rawPayerName?.slice(0, 255) ?? null;
@@ -518,6 +577,7 @@ export class BrebService implements OnModuleInit {
             status: charge.expiresAt < new Date() ? 'expired' : 'pending',
             matchedReference: null,
             lastError: (err as Error).message.slice(0, 1000),
+            ...(original ?? {}),
           },
         );
       });
@@ -543,7 +603,7 @@ export class BrebService implements OnModuleInit {
         'c.id', 'c.module', 'c.amount', 'c.requestedAmount', 'c.status', 'c.payerName',
         'c.bankLabel', 'c.matchedLlave', 'c.matchedReference', 'c.receivedAmount', 'c.saleId',
         'c.saleNumber', 'c.confirmedAt', 'c.confirmedVia', 'c.initiatedByUsername', 'c.lastError',
-        'c.expiresAt', 'c.createdAt',
+        'c.expiresAt', 'c.createdAt', 'c.saleTotal', 'c.restPaymentMethodId',
       ])
       .orderBy('c.createdAt', 'DESC')
       .take(500);
@@ -739,7 +799,9 @@ export class BrebService implements OnModuleInit {
       llave: charge.matchedLlave,
       reference: charge.matchedReference,
       amountReceived: Number(charge.receivedAmount ?? charge.amount),
-      expectedTotal: Number(charge.requestedAmount),
+      expectedTotal: Number(charge.saleTotal ?? charge.requestedAmount),
+      brebAmount: Number(charge.requestedAmount),
+      restPaymentMethodId: charge.restPaymentMethodId ?? null,
     };
     const pm = await this.getBrebPaymentMethod();
     const draft = { ...charge.draft, paymentMethodId: pm.id };

@@ -6,6 +6,8 @@ import { VegetableItem, PricingType } from './entities/vegetable-item.entity';
 import { VegetableCategory } from './entities/vegetable-category.entity';
 import { VegetableSale } from './entities/vegetable-sale.entity';
 import { VegetableSaleItem } from './entities/vegetable-sale-item.entity';
+import { VegetableSalePayment } from './entities/vegetable-sale-payment.entity';
+import { buildPaymentParts } from '../../common/utils/payment-parts.util';
 import { VegetableOrder } from './entities/vegetable-order.entity';
 import { VegetableOrderItem } from './entities/vegetable-order-item.entity';
 import { VegetableStockMovement, StockMovementType } from './entities/vegetable-stock-movement.entity';
@@ -35,6 +37,8 @@ export class VegetablesService {
     private salesRepository: Repository<VegetableSale>,
     @InjectRepository(VegetableSaleItem)
     private saleItemsRepository: Repository<VegetableSaleItem>,
+    @InjectRepository(VegetableSalePayment)
+    private salePaymentsRepository: Repository<VegetableSalePayment>,
     @InjectRepository(VegetableOrder)
     private ordersRepository: Repository<VegetableOrder>,
     @InjectRepository(VegetableOrderItem)
@@ -372,6 +376,11 @@ export class VegetablesService {
     });
     const savedSale = await this.salesRepository.save(sale);
 
+    const parts = await buildPaymentParts(this.paymentMethodsRepository, total, paymentMethod, breb);
+    await this.salePaymentsRepository.save(
+      parts.map((p) => this.salePaymentsRepository.create({ saleId: savedSale.id, ...p })),
+    );
+
     const saleItems = itemsData.map((item) =>
       this.saleItemsRepository.create({
         saleId: savedSale.id,
@@ -405,7 +414,7 @@ export class VegetablesService {
   async findAllSales(includeInactive = false): Promise<VegetableSale[]> {
     return this.salesRepository.find({
       where: includeInactive ? {} : { isActive: true },
-      relations: ['items', 'paymentMethod'],
+      relations: ['items', 'paymentMethod', 'payments', 'payments.paymentMethod'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -413,7 +422,7 @@ export class VegetablesService {
   async findOneSale(id: string): Promise<VegetableSale> {
     const sale = await this.salesRepository.findOne({
       where: { id },
-      relations: ['items', 'paymentMethod'],
+      relations: ['items', 'paymentMethod', 'payments', 'payments.paymentMethod'],
     });
 
     if (!sale) {

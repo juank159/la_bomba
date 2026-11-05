@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { VegetableSaleItem } from './vegetable-sale-item.entity';
 import { PaymentMethod } from '../../credits/entities/payment-method.entity';
+import { VegetableSalePayment } from './vegetable-sale-payment.entity';
 
 @Entity('vegetable_sales')
 export class VegetableSale {
@@ -68,6 +69,12 @@ export class VegetableSale {
 
   @OneToMany(() => VegetableSaleItem, (item) => item.sale, { cascade: true })
   items: VegetableSaleItem[];
+
+  // Partes del pago (ej. Bre-B $20.000 + Efectivo $30.000). Suman `total`.
+  // `paymentMethodId` de arriba queda como el método principal (Bre-B si
+  // hubo Bre-B) para listados; el dinero real se cuenta desde acá.
+  @OneToMany(() => VegetableSalePayment, (p) => p.sale)
+  payments: VegetableSalePayment[];
 
   // Baja lógica: false = eliminada (su descuento de inventario ya se
   // revirtió - ver VegetablesService.deleteSale). No se borra la fila para

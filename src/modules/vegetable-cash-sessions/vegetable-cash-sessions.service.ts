@@ -5,6 +5,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { BrebConfig } from '../breb/entities/breb-config.entity';
 import { VegetableCashSession, CashSessionStatus } from './entities/vegetable-cash-session.entity';
 import { VegetableSale } from '../vegetables/entities/vegetable-sale.entity';
+import { VegetableSalePayment } from '../vegetables/entities/vegetable-sale-payment.entity';
 import { VegetablePurchase, PurchaseFundingSource } from '../vegetables/entities/vegetable-purchase.entity';
 import { VegetableExpense, ExpenseFundingSource } from '../vegetable-expenses/entities/vegetable-expense.entity';
 import { OpenCashSessionDto } from './dto/open-cash-session.dto';
@@ -31,6 +32,8 @@ export class VegetableCashSessionsService {
     private sessionsRepository: Repository<VegetableCashSession>,
     @InjectRepository(VegetableSale)
     private salesRepository: Repository<VegetableSale>,
+    @InjectRepository(VegetableSalePayment)
+    private salePaymentsRepository: Repository<VegetableSalePayment>,
     @InjectRepository(VegetablePurchase)
     private purchasesRepository: Repository<VegetablePurchase>,
     @InjectRepository(VegetableExpense)
@@ -214,16 +217,19 @@ export class VegetableCashSessionsService {
     await this.findOne(sessionId); // 404 si no existe
     return this.salesRepository.find({
       where: { cashSessionId: sessionId, isActive: true },
-      relations: ['paymentMethod'],
+      relations: ['paymentMethod', 'payments', 'payments.paymentMethod'],
       order: { createdAt: 'ASC' },
     });
   }
 
   private async computeSessionTotals(sessionId: string): Promise<SessionTotals> {
-    const salesResult = await this.salesRepository
-      .createQueryBuilder('sale')
-      .innerJoin('sale.paymentMethod', 'pm')
-      .select('COALESCE(SUM(sale.total), 0)', 'sum')
+    // Se suman las PARTES en efectivo de cada venta: una venta de $50.000
+    // pagada Bre-B $20.000 + Efectivo $30.000 aporta $30.000 a la caja.
+    const salesResult = await this.salePaymentsRepository
+      .createQueryBuilder('payment')
+      .innerJoin('payment.sale', 'sale')
+      .innerJoin('payment.paymentMethod', 'pm')
+      .select('COALESCE(SUM(payment.amount), 0)', 'sum')
       .where('sale.cashSessionId = :sessionId', { sessionId })
       .andWhere('pm.isCash = true')
       .andWhere('sale.isActive = true')
@@ -252,14 +258,16 @@ export class VegetableCashSessionsService {
   }
 
   private async computePaymentBreakdown(sessionId: string): Promise<PaymentBreakdownRow[]> {
-    const rows = await this.salesRepository
-      .createQueryBuilder('sale')
-      .innerJoin('sale.paymentMethod', 'pm')
+    // Por partes de pago: una venta mixta suma a cada método lo suyo.
+    const rows = await this.salePaymentsRepository
+      .createQueryBuilder('payment')
+      .innerJoin('payment.sale', 'sale')
+      .innerJoin('payment.paymentMethod', 'pm')
       .select('pm.id', 'paymentMethodId')
       .addSelect('pm.name', 'paymentMethodName')
       .addSelect('pm.isCash', 'isCash')
-      .addSelect('COALESCE(SUM(sale.total), 0)', 'total')
-      .addSelect('COUNT(sale.id)', 'count')
+      .addSelect('COALESCE(SUM(payment.amount), 0)', 'total')
+      .addSelect('COUNT(DISTINCT sale.id)', 'count')
       .where('sale.cashSessionId = :sessionId', { sessionId })
       .andWhere('sale.isActive = true')
       .groupBy('pm.id')
@@ -306,7 +314,7 @@ export class VegetableCashSessionsService {
 
     const sales = await this.salesRepository.find({
       where: { cashSessionId: sessionId, isActive: true },
-      relations: ['paymentMethod'],
+      relations: ['paymentMethod', 'payments', 'payments.paymentMethod'],
       order: { createdAt: 'ASC' },
     });
 
@@ -326,16 +334,40 @@ export class VegetableCashSessionsService {
     const byMethod = new Map<string, { paymentMethodId: string; name: string; isCash: boolean; code: string | null; count: number; total: number }>();
     const brebByLlave = new Map<string, { key: string; label: string; count: number; total: number; received: number }>();
 
+    const round2 = (v: number) => Math.round(v * 100) / 100;
+
     const salesList = sales.map((sale) => {
       const pm = sale.paymentMethod;
       const total = Number(sale.total);
-      const m = byMethod.get(pm.id) ?? { paymentMethodId: pm.id, name: pm.name, isCash: pm.isCash, code: pm.code ?? null, count: 0, total: 0 };
-      m.count += 1;
-      m.total = Math.round((m.total + total) * 100) / 100;
-      byMethod.set(pm.id, m);
+
+      // Partes del pago (una venta mixta tiene varias). Ventas viejas sin
+      // partes registradas cuentan como una sola parte por el total.
+      const parts = (sale.payments?.length ? sale.payments : [{ paymentMethod: pm, amount: total } as VegetableSalePayment])
+        .filter((p) => p.paymentMethod)
+        .map((p) => ({
+          paymentMethodId: p.paymentMethod.id,
+          paymentMethodName: p.paymentMethod.name,
+          isCash: p.paymentMethod.isCash,
+          isBreb: p.paymentMethod.code === 'breb',
+          amount: Number(p.amount),
+        }));
+      for (const part of parts) {
+        const m = byMethod.get(part.paymentMethodId) ?? {
+          paymentMethodId: part.paymentMethodId,
+          name: part.paymentMethodName,
+          isCash: part.isCash,
+          code: part.isBreb ? 'breb' : null,
+          count: 0,
+          total: 0,
+        };
+        m.count += 1;
+        m.total = round2(m.total + part.amount);
+        byMethod.set(part.paymentMethodId, m);
+      }
+      const brebPart = parts.filter((p) => p.isBreb).reduce((acc, p) => acc + p.amount, 0);
 
       let brebGroupKey: string | null = null;
-      if (pm.code === 'breb') {
+      if (pm.code === 'breb' && brebPart > 0) {
         // Por llave si el banco la reportó (Bancolombia), si no por banco
         // (Nequi nunca la manda) — nunca mezclar bancos distintos.
         const llave = sale.brebLlave?.trim() || null;
@@ -348,8 +380,8 @@ export class VegetableCashSessionsService {
           : bank ?? 'Sin identificar';
         const g = brebByLlave.get(brebGroupKey) ?? { key: brebGroupKey, label, count: 0, total: 0, received: 0 };
         g.count += 1;
-        g.total = Math.round((g.total + total) * 100) / 100;
-        g.received = Math.round((g.received + Number(sale.brebAmountReceived ?? total)) * 100) / 100;
+        g.total = round2(g.total + brebPart);
+        g.received = round2(g.received + Number(sale.brebAmountReceived ?? brebPart));
         brebByLlave.set(brebGroupKey, g);
       }
 
@@ -363,6 +395,10 @@ export class VegetableCashSessionsService {
         paymentMethodName: pm.name,
         isCash: pm.isCash,
         isBreb: pm.code === 'breb',
+        // Pago mixto: cada parte con su método (ej. Bre-B + Efectivo).
+        payments: parts,
+        isSplit: parts.length > 1,
+        brebAmount: brebPart > 0 ? round2(brebPart) : null,
         brebPayerName: sale.brebPayerName ?? null,
         brebBankLabel: sale.brebBankLabel ?? null,
         brebLlave: sale.brebLlave ?? null,
