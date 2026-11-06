@@ -30,8 +30,17 @@ import { BankAdapter, BankParseResult } from './bank-adapter.interface';
  *   - Trae la llave Bre-B que recibió el pago — dato nuevo, útil para
  *     desambiguar cuando el tenant tiene varias llaves registradas.
  */
+/*
+ * Plantilla 3 (vista en producción el 05/11/2026, transferencia a llave):
+ *   "Bancolombia: KARLA, recibiste una transferencia de KARLA VIVIANA
+ *    PABON PAEZ por $100.00 en tu cuenta *7718 conectada a la llave
+ *    @karla2524 el 05/11/26 a las 22:13. Con llaves es de una y gratis."
+ *   Igual a la 2 pero con "una transferencia de", "conectada" y año de
+ *   DOS dígitos. Por eso el regex acepta las variantes en vez de una
+ *   frase exacta: Bancolombia cambia palabras sueltas sin aviso.
+ */
 const NEW_TEMPLATE_REGEX =
-  /recibiste un pago de\s+(?<payerName>.+?)\s+por\s*\$\s?(?<amount>[\d.,]+)\s+en tu cuenta\s+\*+(?<accountLast4>\d+)(?:\s+conectado a la llave\s+(?<llave>@\w(?:[\w.-]*\w)?))?(?:.*?el\s+(?<date>\d{2}\/\d{2}\/\d{4})\s+a las\s+(?<time>\d{2}:\d{2}))?/is;
+  /recibiste\s+(?:un\s+pago|una\s+transferencia)\s+de\s+(?<payerName>.+?)\s+por\s*\$\s?(?<amount>[\d.,]+)\s+en\s+tu\s+cuenta\s+\*+(?<accountLast4>\d+)(?:\s+conectad[oa]\s+a\s+la\s+llave\s+(?<llave>@?[\w.@+-]*\w))?(?:.*?el\s+(?<date>\d{2}\/\d{2}\/\d{2,4})\s+a\s+las\s+(?<time>\d{2}:\d{2}))?/is;
 
 const OLD_TEMPLATE_REGEX =
   /recibiste una transferencia por\s*\$\s?(?<amount>[\d.,]+)\s+de\s+(?<payerName>.+?)\s+en tu cuenta\s+\*{2}(?<accountLast4>\d+)(?:,?\s*el\s+(?<date>\d{2}\/\d{2}\/\d{4})\s+a las\s+(?<time>\d{2}:\d{2}))?/is;
@@ -45,6 +54,9 @@ const OLD_TEMPLATE_REGEX =
  * quitar las comas de miles y truncar cualquier decimal.
  */
 function parseColombianAmount(raw: string): number {
+  // "100.000" / "1.250.000" (punto de miles, formato colombiano): si algún
+  // día el banco lo manda así, no confundirlo con decimales (daría $100).
+  if (/^\d{1,3}(\.\d{3})+$/.test(raw)) return Number(raw.replace(/\./g, ''));
   const withoutThousandsSeparators = raw.replace(/,/g, '');
   return Math.round(Number(withoutThousandsSeparators));
 }
