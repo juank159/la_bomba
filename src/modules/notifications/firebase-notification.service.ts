@@ -83,7 +83,15 @@ export class FirebaseNotificationService implements OnModuleInit {
       // Get user's FCM token
       const user = await this.usersService.findOne(userId);
 
+      // También al navegador, si el usuario tiene la app web abierta con
+      // notificaciones activadas. Independiente del celular: si uno falla,
+      // el otro igual llega.
+      const webSent = user?.webFcmToken
+        ? await this.sendWebPush(userId, user.webFcmToken, title, body, data)
+        : false;
+
       if (!user || !user.fcmToken) {
+        if (webSent) return true;
         console.log(`⚠️ User ${userId} does not have FCM token`);
         return false;
       }
@@ -137,9 +145,40 @@ export class FirebaseNotificationService implements OnModuleInit {
       if (error.code === 'messaging/invalid-registration-token' ||
           error.code === 'messaging/registration-token-not-registered') {
         console.log(`🗑️ Clearing invalid FCM token for user ${userId}`);
-        await this.usersService.clearFcmToken(userId);
+        await this.usersService.clearFcmToken(userId, 'mobile');
       }
 
+      return false;
+    }
+  }
+
+  /** Notificación al navegador (app web). Nunca lanza. */
+  private async sendWebPush(
+    userId: string,
+    token: string,
+    title: string,
+    body: string,
+    data: PushNotificationData,
+  ): Promise<boolean> {
+    try {
+      await admin.messaging().send({
+        token,
+        notification: { title, body },
+        data: Object.fromEntries(
+          Object.entries(data).filter(([, v]) => typeof v === 'string' && v !== ''),
+        ) as Record<string, string>,
+        webpush: {
+          notification: { icon: '/icons/Icon-192.png', badge: '/icons/Icon-192.png' },
+          fcmOptions: { link: process.env.WEB_APP_URL || 'https://labombafrontend.vercel.app' },
+        },
+      });
+      return true;
+    } catch (error) {
+      console.error(`❌ Error enviando push web a ${userId}: ${error?.message ?? error}`);
+      if (error?.code === 'messaging/invalid-registration-token' ||
+          error?.code === 'messaging/registration-token-not-registered') {
+        await this.usersService.clearFcmToken(userId, 'web').catch(() => undefined);
+      }
       return false;
     }
   }
@@ -163,28 +202,33 @@ export class FirebaseNotificationService implements OnModuleInit {
   ): Promise<number> {
     if (!this.firebaseApp) return 0;
     const allowed = new Set(['admin', 'verdulero']);
-    let recipients: Array<{ id: string; role: string; fcmToken: string }> = [];
+    let users: Array<{ id: string; role: string; fcmToken?: string; webFcmToken?: string; isActive?: boolean }> = [];
     try {
       const initiator = await this.usersService.findOne(initiatorUserId);
       const admins = await this.usersService.findUsersByRole('admin');
-      recipients = [initiator, ...admins].filter(
-        (u): u is any => !!u && !!u.fcmToken && u.isActive !== false && allowed.has(String(u.role)),
+      users = [initiator, ...admins].filter(
+        (u): u is any => !!u && u.isActive !== false && allowed.has(String(u.role)),
       );
     } catch (error) {
       console.error(`❌ Error buscando destinatarios del push Bre-B: ${error?.message ?? error}`);
       return 0;
     }
 
-    // Sin duplicados (el admin que cobró es a la vez cajero y admin; y un
-    // mismo celular no debe sonar dos veces).
+    // Un envío por DISPOSITIVO (celular y/o navegador de cada usuario), sin
+    // duplicados: el admin que cobró es a la vez cajero y admin, y un mismo
+    // celular/navegador no debe sonar dos veces.
     const seenUsers = new Set<string>();
     const seenTokens = new Set<string>();
-    recipients = recipients.filter((u) => {
-      if (seenUsers.has(u.id) || seenTokens.has(u.fcmToken)) return false;
+    const recipients: Array<{ id: string; token: string; kind: 'mobile' | 'web' }> = [];
+    for (const u of users) {
+      if (seenUsers.has(u.id)) continue;
       seenUsers.add(u.id);
-      seenTokens.add(u.fcmToken);
-      return true;
-    });
+      for (const [token, kind] of [[u.fcmToken, 'mobile'], [u.webFcmToken, 'web']] as const) {
+        if (!token || seenTokens.has(token)) continue;
+        seenTokens.add(token);
+        recipients.push({ id: u.id, token, kind });
+      }
+    }
 
     const amountStr = Math.round(amount).toString();
     const amountFmt = '$' + Math.round(amount).toLocaleString('es-CO');
@@ -201,44 +245,79 @@ export class FirebaseNotificationService implements OnModuleInit {
         ? `${amountFmt}${payerName ? ' · ' + payerName : ''}`
         : `${amountFmt}${payerName ? ' de ' + payerName : ''} · ${where}` +
           `${context.cashier ? ', cobró ' + context.cashier : ''}${saleTxt}`;
+      const title = `💰 Pago Bre-B recibido${bankLabel ? ' — ' + bankLabel : ''}`;
+      // Lo que se dice en voz alta (igual que Food App): al cajero de qué
+      // banco llegó; al admin, de qué caja, para que no lo confunda.
+      const voice = isInitiator
+        ? (bankLabel ? `Recibiste en ${bankLabel}, ${amountStr} pesos` : `Pago recibido, ${amountStr} pesos`)
+        : `Pago Bre-B en ${where.toLowerCase()}, ${amountStr} pesos`;
+      const data = {
+        type: 'breb_payment_confirmed',
+        charge_id: chargeId,
+        amount: amountStr,
+        payer_name: payerName ?? '',
+        bank: bankLabel ?? '',
+        module: context.module ?? '',
+        cashier: context.cashier ?? '',
+        sale_number: context.saleNumber ? String(context.saleNumber) : '',
+        for_initiator: isInitiator ? 'true' : 'false',
+        voice,
+      };
       try {
-        await admin.messaging().send({
-          token: u.fcmToken,
-          notification: {
-            title: `💰 Pago Bre-B recibido${bankLabel ? ' — ' + bankLabel : ''}`,
-            body,
-          },
-          data: {
-            type: 'breb_payment_confirmed',
-            charge_id: chargeId,
-            amount: amountStr,
-            payer_name: payerName ?? '',
-            bank: bankLabel ?? '',
-            module: context.module ?? '',
-            cashier: context.cashier ?? '',
-            sale_number: context.saleNumber ? String(context.saleNumber) : '',
-            for_initiator: isInitiator ? 'true' : 'false',
-          },
-          android: {
-            priority: 'high',
-            notification: {
-              sound: 'default',
-              channelId: 'default_channel',
-              icon: 'ic_notification',
-              color: '#4CAF50',
+        if (u.kind === 'web') {
+          await admin.messaging().send({
+            token: u.token,
+            notification: { title, body },
+            data,
+            webpush: {
+              headers: { Urgency: 'high', TTL: '600' },
+              notification: {
+                icon: '/icons/Icon-192.png',
+                badge: '/icons/Icon-192.png',
+                tag: `breb-${chargeId}`,
+                renotify: true,
+              },
+              fcmOptions: { link: process.env.WEB_APP_URL || 'https://labombafrontend.vercel.app' },
             },
-          },
-          apns: {
-            payload: { aps: { sound: 'default', badge: 1 } },
-            headers: { 'apns-priority': '10' },
-          },
-        });
+          });
+        } else {
+          // 1) La notificación visible: confiable, llega siempre.
+          await admin.messaging().send({
+            token: u.token,
+            notification: { title, body },
+            data,
+            android: {
+              priority: 'high',
+              notification: {
+                sound: 'default',
+                channelId: 'default_channel',
+                icon: 'ic_notification',
+                color: '#4CAF50',
+              },
+            },
+            apns: {
+              payload: { aps: { sound: 'default', badge: 1 } },
+              headers: { 'apns-priority': '10' },
+            },
+          });
+          // 2) Un mensaje SOLO de datos para la voz con la app en segundo
+          // plano o el celular bloqueado: Android solo despierta a la app
+          // para mensajes sin bloque `notification` (con uno, la bandeja del
+          // sistema lo muestra sola y la app nunca se entera). Va aparte para
+          // que, si este se pierde, la notificación de arriba igual llegue.
+          // Mismo patrón que la alerta de pedidos QR de Food App.
+          await admin.messaging().send({
+            token: u.token,
+            data: { type: 'breb_payment_voice', charge_id: chargeId, voice },
+            android: { priority: 'high', ttl: 60_000 },
+          }).catch((e) => console.warn(`⚠️ Push de voz Bre-B a ${u.id} no salió: ${e?.message ?? e}`));
+        }
         sent++;
       } catch (error) {
-        console.error(`❌ Error enviando push Bre-B a ${u.id}: ${error?.message ?? error}`);
+        console.error(`❌ Error enviando push Bre-B (${u.kind}) a ${u.id}: ${error?.message ?? error}`);
         if (error?.code === 'messaging/invalid-registration-token' ||
             error?.code === 'messaging/registration-token-not-registered') {
-          await this.usersService.clearFcmToken(u.id).catch(() => undefined);
+          await this.usersService.clearFcmToken(u.id, u.kind).catch(() => undefined);
         }
       }
     }

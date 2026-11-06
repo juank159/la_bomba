@@ -355,10 +355,15 @@ export class AuthService {
   /**
    * Logout user - clears FCM token
    */
-  async logout(userId: string): Promise<{ message: string }> {
+  async logout(userId: string, platform?: string): Promise<{ message: string }> {
     try {
-      // Clear FCM token to stop receiving notifications
-      await this.usersRepository.update(userId, { fcmToken: null });
+      // Deja de notificar SOLO al dispositivo que cerró sesión: cerrar la
+      // web no debe apagar las notificaciones del celular (y viceversa).
+      // Apps viejas no mandan `platform` → es el celular.
+      await this.usersRepository.update(
+        userId,
+        platform === 'web' ? { webFcmToken: null } : { fcmToken: null },
+      );
 
       this.logger.log(`User ${userId} logged out - FCM token cleared`);
 

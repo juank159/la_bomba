@@ -35,6 +35,14 @@ export class User {
   @Column({ type: 'varchar', length: 255, nullable: true })
   fcmToken: string;
 
+  /**
+   * Token de notificaciones del NAVEGADOR (app web). Va aparte del del
+   * celular para que el admin reciba en los dos: si compartieran columna,
+   * abrir la web le quitaría las notificaciones al celular.
+   */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  webFcmToken: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -59,8 +59,8 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  async logout(@Request() req) {
-    return this.authService.logout(req.user.userId);
+  async logout(@Request() req, @Body('platform') platform?: string) {
+    return this.authService.logout(req.user.userId, platform);
   }
 
   /**

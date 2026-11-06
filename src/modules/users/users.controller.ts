@@ -23,15 +23,19 @@ export class UsersController {
   }
 
   @Put('fcm-token')
-  async updateFcmToken(@Request() req, @Body('fcmToken') fcmToken: string) {
+  async updateFcmToken(
+    @Request() req,
+    @Body('fcmToken') fcmToken: string,
+    @Body('platform') platform?: string,
+  ) {
     const userId = req.user.userId;
-    return this.usersService.updateFcmToken(userId, fcmToken);
+    return this.usersService.updateFcmToken(userId, fcmToken, platform);
   }
 
   @Put('fcm-token/clear')
-  async clearFcmToken(@Request() req) {
+  async clearFcmToken(@Request() req, @Body('platform') platform?: string) {
     const userId = req.user.userId;
-    await this.usersService.clearFcmToken(userId);
+    await this.usersService.clearFcmToken(userId, platform);
     return { message: 'FCM token cleared successfully' };
   }
 }
